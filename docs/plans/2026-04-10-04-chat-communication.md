@@ -39,6 +39,18 @@ Proximity DM and roster DM share the same `chat_channel` — start by walking up
 
 ---
 
+## Chat Architecture Notes
+
+Colyseus is used only as a real-time message relay (transient). Chat history is loaded from PostgreSQL via REST API on channel join. The existing `chatMessages` ArraySchema is removed from OfficeState in the refactoring and replaced with direct `room.broadcast()` calls filtered by channel membership.
+
+LEAVE_ZONE events are debounced by 500ms to prevent rapid chat channel join/leave during movement.
+
+DM channels are uniquely identified by a canonical key: the two user UUIDs sorted alphabetically and concatenated. Before creating a new DM channel, the server queries for an existing channel with this key.
+
+All chat messages are validated server-side: max 500 characters per message, rate limited to 1 message per 500ms per user.
+
+---
+
 ## Meeting Room Chat
 
 - Player enters room zone → auto-joins room's `chat_channel`
@@ -148,4 +160,6 @@ coturn:
     - TURN_REALM=nexvoffice
 ```
 
-Express proxies `/peerjs` to the PeerJS container so the client connects to a single host.
+Express uses `http-proxy-middleware` with WebSocket upgrade support to proxy `/peerjs` requests to the PeerJS container on port 9000.
+
+WebRTC full mesh supports up to 6 concurrent voice participants per room. For rooms with more than 6 users, voice is limited to the first 6 to join. SFU support for larger rooms is planned for v2.

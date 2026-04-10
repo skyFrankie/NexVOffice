@@ -10,7 +10,7 @@ Series: Design Documents 2 of 7
 1. **First boot**: Database is empty. Server seeds an admin account (`admin` / `changeme`) and sets a `force_password_change` flag. Admin is redirected to a change-password screen on first login.
 2. **User provisioning**: Admin creates user accounts via the admin panel. No self-registration. Invite-based only (admin sets username + temporary password, user changes on first login).
 3. **Login**: `POST /auth/login` with `{ username, password }`. Server bcrypt-verifies the password hash. Returns a signed JWT on success.
-4. **Token usage**: Client stores JWT in memory (not localStorage). Sends it as `Authorization: Bearer <token>` for all REST calls. Also passed as the Colyseus auth token on `room.connect()`.
+4. **Token usage**: Client stores JWT in localStorage. Sends it as `Authorization: Bearer <token>` for all REST calls. Also passed as the Colyseus auth token on `room.connect()`. **Note:** localStorage is used for POC to survive page refresh. For production, consider httpOnly cookies with CSRF protection.
 5. **Colyseus auth**: `onAuth` hook on each room verifies the JWT signature and expiry before allowing the client to join. Rejects with 401 if invalid.
 6. **Future**: Add OAuth/SSO provider support (Google Workspace, GitHub, etc.) via Passport.js strategy layer. JWT issuance path stays the same — only the credential verification step changes.
 
@@ -51,9 +51,13 @@ CREATE TABLE office_layout (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   grid_width   INT NOT NULL DEFAULT 5,
   grid_height  INT NOT NULL DEFAULT 4,
+  is_active    BOOLEAN NOT NULL DEFAULT false,
   created_by   UUID NOT NULL REFERENCES users(id),
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Singleton mechanism: only one layout may be active at a time.
+CREATE UNIQUE INDEX idx_office_layout_active ON office_layout (is_active) WHERE is_active = true;
 
 CREATE TABLE room_templates (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -87,6 +91,27 @@ CREATE TABLE room_placements (
 
 ---
 
+### Office Settings
+
+```sql
+CREATE TABLE office_settings (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  timezone        VARCHAR NOT NULL DEFAULT 'UTC',
+  beat_damage     INT NOT NULL DEFAULT 10,
+  beat_cooldown_s INT NOT NULL DEFAULT 3,
+  hp_reset_time   TIME NOT NULL DEFAULT '00:00',
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+- `timezone`: IANA timezone string used for daily HP reset scheduling.
+- `beat_damage`: HP deducted per beat action.
+- `beat_cooldown_s`: Minimum seconds between beat actions per player.
+- `hp_reset_time`: Time of day (in the configured timezone) at which HP resets to max.
+
+---
+
 ### Chat
 
 ```sql
@@ -112,7 +137,7 @@ CREATE TYPE sender_type AS ENUM ('user', 'npc', 'system');
 CREATE TABLE chat_messages (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   channel_id  UUID NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
-  sender_id   UUID NULL REFERENCES users(id) ON DELETE SET NULL,
+  sender_id   UUID NULL,  -- no FK: sender_type determines which table to join (users for 'user', npc_agents for 'npc', NULL for 'system')
   sender_type sender_type NOT NULL DEFAULT 'user',
   content     TEXT NOT NULL,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -207,19 +232,28 @@ CREATE TABLE npc_embeddings (
   npc_id    UUID NOT NULL REFERENCES npc_agents(id) ON DELETE CASCADE,
   source_id UUID NOT NULL REFERENCES npc_knowledge_sources(id) ON DELETE CASCADE,
   chunk_text TEXT NOT NULL,
-  embedding  VECTOR(1536) NOT NULL,
+  embedding  VECTOR(1024) NOT NULL,
   metadata   JSONB NOT NULL DEFAULT '{}'
 );
 
-CREATE INDEX ON npc_embeddings USING ivfflat (embedding vector_cosine_ops)
-  WITH (lists = 100);
+CREATE INDEX ON npc_embeddings USING hnsw (embedding vector_cosine_ops)
+  WITH (m = 16, ef_construction = 64);
 ```
 
 - `agent_type = 'ghost'`: read-only knowledge base, no MCP tool execution. Safer for general-purpose assistants.
 - `agent_type = 'agent'`: can execute tools via configured MCP connections (subject to `npc_tool_permissions`).
 - `spawn_room_id NULL` means the NPC roams the lobby/public area.
 - `npc_tool_permissions.allowed DEFAULT false`: tools must be explicitly whitelisted; deny-by-default.
-- The IVFFlat index on `npc_embeddings.embedding` enables efficient approximate nearest-neighbor search for RAG retrieval. `lists = 100` is a starting value; tune based on embedding count.
+- The HNSW index on `npc_embeddings.embedding` enables efficient approximate nearest-neighbor search for RAG retrieval.
+
+**IPlayer interface fields for NPC players** (Colyseus schema / shared player state):
+
+| Field      | Type                      | Description                                              |
+|------------|---------------------------|----------------------------------------------------------|
+| `is_npc`   | `BOOLEAN DEFAULT false`   | `true` for NPC characters; `false` for human players     |
+| `npc_type` | `VARCHAR NULL`            | `'agent'` (tool-enabled) or `'ghost'` (knowledge-only); NULL for human players |
+
+These fields are set on the Colyseus player state when an NPC joins the room, allowing clients to render NPC characters differently and suppressing HP/beat UI for NPC entities.
 
 ---
 
@@ -227,16 +261,17 @@ CREATE INDEX ON npc_embeddings USING ivfflat (embedding vector_cosine_ops)
 
 ```sql
 CREATE TABLE player_stats (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id      UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-  hp           INT NOT NULL DEFAULT 100,
-  max_hp       INT NOT NULL DEFAULT 100,
-  last_reset_at DATE NOT NULL DEFAULT CURRENT_DATE
+  user_id       UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  hp            INT NOT NULL DEFAULT 100,
+  max_hp        INT NOT NULL DEFAULT 100,
+  last_reset_at DATE NOT NULL DEFAULT CURRENT_DATE,
+  last_beat_at  TIMESTAMPTZ NULL
 );
 ```
 
-- One row per user (`UNIQUE` on `user_id`).
+- `user_id` is the primary key — one row per user, no separate surrogate `id` column needed.
 - `last_reset_at` tracks the last daily reset date. The server checks this on connection and resets `hp` to `max_hp` if `last_reset_at < CURRENT_DATE`.
+- `last_beat_at` records the timestamp of the player's most recent beat action. Used to enforce `beat_cooldown_s` from `office_settings`.
 
 ---
 

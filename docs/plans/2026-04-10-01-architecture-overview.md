@@ -77,10 +77,10 @@ Five containers compose a complete NexVOffice deployment:
 | app      | NexVOffice server (Express + Colyseus + REST API)    |
 | postgres | Primary data store + pgvector for RAG embeddings     |
 | peerjs   | WebRTC signaling server (internal, not exposed)      |
-| coturn   | TURN relay for WebRTC NAT traversal (internal)       |
-| redis    | Session store + future pub/sub message bus           |
+| coturn   | TURN relay for WebRTC NAT traversal (UDP 3478 + relay range must be publicly accessible) |
+| redis    | Session store + future pub/sub message bus (optional for POC — use in-memory store; add Redis when scaling beyond a single process) |
 
-PeerJS and Coturn are kept private (not externally exposed) to prevent abuse. All client WebRTC signaling goes through the app container which proxies to PeerJS.
+PeerJS signaling is proxied through the app container (Express) and is not directly exposed externally. Coturn TURN relay ports (UDP 3478 + the configured relay port range) MUST be publicly accessible — without external reachability, WebRTC NAT traversal fails for clients behind symmetric NAT. Ensure firewall/security-group rules allow inbound UDP on these ports.
 
 ---
 
@@ -156,6 +156,9 @@ A dedicated Service Layer decouples React UI components, Phaser game scenes, and
 - This avoids stuffing all game logic into Colyseus message handlers and keeps server logic testable
 
 ### 4. Rooms as spatial collaboration boundaries
+
+**Terminology:** One Colyseus Room instance runs per office deployment. 'Meeting rooms', 'break rooms', and other named spaces are logical zones within that single Colyseus Room — they are NOT separate Colyseus Room instances. Zone detection is handled server-side by checking player positions against zone boundaries.
+
 Walking into a room on the map automatically:
 - Joins that room's voice channel (if voice-enabled)
 - Joins that room's scoped chat channel

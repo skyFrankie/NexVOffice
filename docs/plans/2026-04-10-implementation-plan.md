@@ -21,7 +21,7 @@
 | 2 | Map & Room System | Phase 1 | 11 |
 | 3 | Chat System | Phase 2 | 10 |
 | 4 | Meeting Room Collaboration | Phase 3 | 9 |
-| 5 | AI NPC Engine | Phase 1 | 12 |
+| 5 | AI NPC Engine | Phase 1 (+Phase 2 for NPC room placement) | 12 |
 | 6 | Gamification & Tasks | Phase 1 | 8 |
 | 7 | Admin Panel & Polish | Phase 2-6 | 8 |
 
@@ -161,7 +161,7 @@ git commit -m "refactor: decouple ChatStore from Phaser scene access"
 
 **Step 1:** Remove Phaser access from ComputerStore. Same pattern as Task 0.3 — make `openComputerDialog` and `closeComputerDialog` pure state updates.
 
-**Step 2:** Move the keyboard disable/enable logic to the Game.ts store subscription (extend the one from Task 0.3 to also watch `computer.computerDialogOpen`).
+**Step 2:** Move the keyboard disable/enable logic to the Game.ts store subscription (extend the one from Task 0.3 to also watch `computer.computerDialogOpen`). Also move the `game.network.disconnectFromComputer()` call from the `closeComputerDialog` reducer to the NetworkService or a store subscription bridge.
 
 **Step 3:** Commit.
 
@@ -178,7 +178,7 @@ git commit -m "refactor: decouple ComputerStore from Phaser scene access"
 - Modify: `client/src/stores/WhiteboardStore.ts`
 - Modify: `client/src/scenes/Game.ts`
 
-**Step 1:** Same pattern — pure reducer, move keyboard control to Game.ts subscription.
+**Step 1:** Same pattern — pure reducer, move keyboard control to Game.ts subscription. Also move the `game.network.disconnectFromWhiteboard()` call from the `closeWhiteboardDialog` reducer to the NetworkService or a store subscription bridge.
 
 **Step 2:** Commit.
 
@@ -447,6 +447,25 @@ git commit -m "fix: resolve build issues from Phase 0 refactoring"
 
 ---
 
+### Task 0.13: Add Vitest Setup
+
+Files:
+- Create: `client/vitest.config.ts`
+- Create: `client/src/services/__tests__/` directory
+- Modify: `client/package.json` (add vitest dev dependency)
+
+Step 1: Install vitest and configure for React/TypeScript.
+
+Step 2: Create a sample test file to verify setup works.
+
+Step 3: Commit.
+
+```bash
+git commit -m "chore: add vitest test infrastructure"
+```
+
+---
+
 ## Phase 1: Database & Auth
 
 **Goal:** Add PostgreSQL, user accounts, JWT auth, seed admin.
@@ -618,7 +637,7 @@ git commit -m "feat: integrate JWT auth into Colyseus room join"
 
 **Step 2:** Create useAuth hook that wraps the store.
 
-**Step 3:** Persist token in localStorage.
+**Step 3:** Persist token in localStorage (for POC — survives page refresh). Note: for production, consider httpOnly cookies with CSRF protection.
 
 **Step 4:** Commit.
 
@@ -690,6 +709,8 @@ git commit -m "fix: Phase 1 verification fixes"
 ## Phase 2: Map & Room System
 
 **Goal:** Data-driven maps from template blocks, zone detection, room-scoped features.
+
+**Note:** The v1 stitcher assumes all built-in templates share identical tileset definitions. No GID remapping is needed. Custom template support is deferred to v2.
 
 **Reference:** `docs/plans/2026-04-10-03-map-room-system.md`
 
@@ -1283,6 +1304,8 @@ git commit -m "fix: Phase 4 verification fixes"
 ## Phase 5: AI NPC Engine
 
 **Goal:** AI-powered NPCs that join the office as characters, respond to conversations and @mentions.
+
+**Depends on:** Phase 1 (Phase 2 for room-specific NPC placement, but NPC engine works in lobby mode without it).
 
 **Reference:** `docs/plans/2026-04-10-05-ai-npc-engine.md`
 

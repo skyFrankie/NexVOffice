@@ -52,24 +52,25 @@ A server-side cron job resets all HP to `max_hp` at midnight:
 ### How It Works
 
 1. Player A presses B while standing near Player B
-2. Client checks cooldown (3 seconds since last beat) — blocks if too soon
-3. Client sends `BEAT_PLAYER { targetUserId }` to Colyseus server
-4. Server validates: is target in the same room? Is the beat cooldown elapsed server-side?
-5. Server deducts 10 HP from target (configurable via `office_settings.beat_damage`, default 10)
-6. Server broadcasts `HP_UPDATE { userId, hp, maxHp }` to all clients in the room
-7. Server broadcasts a chat notification to the room channel
+2. Target selection: when the player presses B, the server selects the nearest player within 64 pixels (2 tiles), excluding self and NPCs. If no valid target is in range, the action is ignored.
+3. Client checks cooldown (configurable via office_settings table (default: 3-second cooldown)) — blocks if too soon
+4. Client sends `BEAT_PLAYER { targetUserId }` to Colyseus server
+5. Server validates: is target in the same room? Is the beat cooldown elapsed server-side?
+6. Server deducts HP from target (configurable via office_settings table (default: 10 HP damage, 3-second cooldown))
+7. Server broadcasts `HP_UPDATE { userId, hp, maxHp }` to all clients in the room
+8. Server broadcasts a chat notification to the room channel
 
 ### Visual Feedback
 
 - Target sprite flashes red: 3 rapid tint cycles (`0xff0000` → original) over 400ms
 - Small knockback: target moves 8px in the direction away from attacker over 200ms, then returns
-- Chat notification in room channel: `"Frank beat Alice! (-10 HP)"`
+- Chat notification in room channel: `"Frank beat Alice! (-{beat_damage} HP)"` (damage value from office_settings table, default: 10 HP damage)
 
 ### Cooldown
 
-- 3-second cooldown enforced on both client (UX) and server (validation)
+- Cooldown enforced on both client (UX) and server (validation) — configurable via office_settings table (default: 3-second cooldown)
 - `lastBeatTime` stored in `PlayerState` as a Unix timestamp
-- Server rejects beats that arrive before `lastBeatTime + 3000ms`
+- Server rejects beats that arrive before `lastBeatTime + cooldown_ms`
 
 ### v1 Scope
 
@@ -164,7 +165,7 @@ Query parameters for GET:
 
 When a task is assigned or updated, the server sends a Colyseus message to the relevant player(s):
 
-- `TASK_ASSIGNED { taskId, assignedTo, title }` — sent to the newly assigned user
+- `TASK_ASSIGNED { taskId, assignedTo, assignedBy, title }` — sent to the newly assigned user
 - `TASK_UPDATED { taskId, status }` — broadcast to assignee and creator
 
 The client `taskStore.ts` listens for these messages and updates local state. `TaskPanel.tsx` subscribes to the store and re-renders automatically.
@@ -284,7 +285,7 @@ BEAT_PLAYER     { targetUserId: string }
 
 // Server → Client (broadcast or targeted)
 HP_UPDATE       { userId: string, hp: number, maxHp: number }
-TASK_ASSIGNED   { taskId: string, assignedTo: string, title: string }
+TASK_ASSIGNED   { taskId: string, assignedTo: string, assignedBy: string, title: string }
 TASK_UPDATED    { taskId: string, status: 'todo' | 'in_progress' | 'done' }
 ```
 

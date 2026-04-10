@@ -32,6 +32,14 @@ NPC Engine:
 
 ---
 
+## Rate Limiting & Concurrency
+
+NPC_MESSAGE is rate limited to 1 message per 3 seconds per user. Max content length: 500 characters. This prevents both spam and excessive Bedrock API costs.
+
+The AI Gateway queues requests with a configurable concurrency limit (default: 3 concurrent Bedrock calls). Excess requests queue with a 30-second timeout.
+
+---
+
 ## Walk-up Conversation Flow
 
 1. User walks near NPC → "Press R to talk to [NPC name]"
@@ -57,6 +65,8 @@ NPC Engine:
 4. NPC "walks" to meeting room (behavior controller)
 5. Response posted to room's `chat_channel` — all members see it
 
+In meeting @mentions, the mentioning user's linked token is used for MCP tool calls. If a tool result contains user-scoped sensitive data, it is DM'd privately to the mentioner rather than posted to the room chat.
+
 ---
 
 ## Admin NPC Definition (7 steps)
@@ -75,14 +85,15 @@ NPC Engine:
 
 ```
 Admin uploads doc → server saves file
-  → Chunk into ~500 token pieces with overlap
+  → Chunk into ~500 token chunks with 100-token overlap between adjacent chunks
   → Bedrock Titan Embeddings (amazon.titan-embed-text-v2) per chunk
   → Store in npc_embeddings (pgvector)
   → Mark source as indexed
 
 User query:
   → Embed question with Titan
-  → pgvector: nearest 5 chunks (cosine distance)
+  → pgvector: nearest 5 chunks (cosine distance), filtered by npc_id
+  → Query: SELECT chunk_text FROM npc_embeddings WHERE npc_id = :npc_id ORDER BY embedding <=> :query_embedding LIMIT 5
   → Inject as context in prompt
 ```
 
@@ -121,6 +132,20 @@ When LLM returns tool_use:
 - Appearance: translucent sprite, gray glow
 - Ghost intro message shown on first interaction
 - Can be @mentioned in meetings same as agents
+
+---
+
+## NPC Connection Pattern
+
+For POC, NPCs are implemented as synthetic players managed directly in the Colyseus room state. The NPC Engine adds NPC entries to the players MapSchema without creating actual WebSocket connections. This avoids unnecessary connection overhead while maintaining the same client-side rendering path.
+
+The NPC Engine runs a heartbeat check every 30 seconds. If an NPC's state becomes corrupted or the engine restarts, NPCs are re-spawned from the database configuration.
+
+---
+
+## AI Pipeline Error Handling
+
+On AI pipeline failure (Bedrock error, MCP timeout, RAG failure), the NPC responds with a fallback message: 'I'm having trouble thinking right now. Please try again in a moment.' The error is logged server-side for debugging.
 
 ---
 

@@ -34,6 +34,10 @@ Each template row in `room_templates` defines a complete, self-contained room bl
 | `features`         | `{ voice, screenshare, whiteboard, privateChat }` — boolean flags   |
 | `is_builtin`       | `true` for shipped templates; `false` for operator-created customs  |
 
+### Grid Cell Size
+
+Each grid cell is 10x10 tiles (320x320 pixels at 32px/tile). Templates larger than 10x10 span multiple cells via `width_blocks`/`height_blocks`.
+
 ### Zone Boundary
 Each template implicitly defines a zone boundary equal to its full tile extent. The stitcher calculates the absolute pixel bounds after placement: `{ x: gridX * blockPixelWidth, y: gridY * blockPixelHeight, w: templateTileWidth * tileSize, h: templateTileHeight * tileSize }`.
 
@@ -45,7 +49,7 @@ Each template implicitly defines a zone boundary equal to its full tile extent. 
 |---------------|-----------|-------|--------|------------|--------------|------------|
 | Meeting Room S | 10x10    | Yes   | Yes    | Yes        | Private      | 4          |
 | Meeting Room M | 10x15    | Yes   | Yes    | Yes        | Private      | 8          |
-| Meeting Room L | 15x20    | Yes   | Yes    | Yes        | Private      | 20         |
+| Meeting Room L | 15x20    | Yes*  | Yes    | Yes        | Private      | 20         |
 | Open Desk Area | 20x20    | No    | No     | No         | Public       | Unlimited  |
 | Break Room     | 10x10    | Yes   | No     | No         | Private      | 10         |
 | NPC Office     | 10x10    | No    | No     | No         | Private 1:1  | 2          |
@@ -58,6 +62,7 @@ Each template implicitly defines a zone boundary equal to its full tile extent. 
 - "Public" chat means messages go to the company-wide public channel.
 - "NPC Office" is the only template with a max of 2 — it is designed for 1-on-1 conversations with an NPC agent.
 - Hallway H and Hallway V are the same content rotated; both are needed as separate templates because Tiled exports are not rotation-aware at the stitcher level.
+- *Meeting Room L supports 20 users for text chat, but voice chat uses a WebRTC mesh which caps at 6 concurrent participants in v1. Users 7–20 can participate via text only. SFU (Selective Forwarding Unit) support for larger voice rooms is planned for v2.
 
 ---
 
@@ -118,6 +123,10 @@ Output: Single Phaser-compatible Tiled JSON tilemap
 
 **Tileset requirements**: All built-in templates must use the same base tilesets (same tileset IDs and GIDs). Custom templates must declare which tilesets they use; the stitcher merges tileset definitions in the output.
 
+**v1 stitcher constraint:** v1 stitcher assumes all built-in templates share identical tileset definitions (same tilesets with same GIDs). No GID remapping is needed. Custom template support with GID remapping is deferred to v2.
+
+**Wall authoring convention:** Templates must NOT include perimeter wall tiles. Only interior decoration and divider walls. The stitcher generates all perimeter walls and doorway openings.
+
 ---
 
 ## Zone Detection
@@ -155,6 +164,14 @@ interface RoomZone {
   };
 }
 ```
+
+### Zone Priority
+
+If a player's position falls within multiple zones (e.g., at a doorway), the most recently entered zone takes priority.
+
+### Zone Debounce
+
+LEAVE_ZONE events are debounced by 500ms. If the player enters a new zone within the debounce window, the leave event for the previous zone is suppressed.
 
 ### Zone events
 

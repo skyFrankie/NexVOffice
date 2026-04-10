@@ -140,6 +140,7 @@ export class SkyOffice extends Room<OfficeState> {
 
     // when a player send a chat message, update the message array and broadcast to all connected clients except the sender
     this.onMessage(Message.ADD_CHAT_MESSAGE, (client, message: { content: string }) => {
+
       // update the message array (so that players join later can also see the message)
       this.dispatcher.dispatch(new ChatMessageUpdateCommand(), {
         client,
@@ -152,6 +153,67 @@ export class SkyOffice extends Room<OfficeState> {
         { clientId: client.sessionId, content: message.content },
         { except: client }
       )
+    })
+
+    // TODO: Phase 3 — Chat
+    this.onMessage(Message.SEND_DM, (client, message) => {
+      // TODO: Phase 3
+    })
+
+    this.onMessage(Message.SEND_ROOM_MESSAGE, (client, message) => {
+      // TODO: Phase 3
+    })
+
+    this.onMessage(Message.MENTION_NPC, (client, message) => {
+      // TODO: Phase 3
+    })
+
+    this.onMessage(Message.START_PROXIMITY_CHAT, (client, message) => {
+      // TODO: Phase 3
+    })
+
+    // TODO: Phase 3 — Zones
+    this.onMessage(Message.ENTER_ZONE, (client, message) => {
+      // TODO: Phase 3
+    })
+
+    this.onMessage(Message.LEAVE_ZONE, (client, message) => {
+      // TODO: Phase 3
+    })
+
+    this.onMessage(Message.JOIN_VOICE, (client, message) => {
+      // TODO: Phase 3
+    })
+
+    this.onMessage(Message.LEAVE_VOICE, (client, message) => {
+      // TODO: Phase 3
+    })
+
+    // TODO: Phase 3 — NPC
+    this.onMessage(Message.START_NPC_CONVERSATION, (client, message) => {
+      // TODO: Phase 3
+    })
+
+    this.onMessage(Message.NPC_MESSAGE, (client, message) => {
+      // TODO: Phase 3
+    })
+
+    this.onMessage(Message.END_NPC_CONVERSATION, (client, message) => {
+      // TODO: Phase 3
+    })
+
+    // TODO: Phase 3 — Gamification
+    this.onMessage(Message.BEAT_PLAYER, (client, message) => {
+      // TODO: Phase 3
+    })
+
+    // TODO: Phase 3 — Tasks
+    this.onMessage(Message.TASK_ASSIGNED, (client, message) => {
+      // TODO: Phase 3
+    })
+
+    this.onMessage(Message.TASK_UPDATED, (client, message) => {
+      // TODO: Phase 3
     })
   }
 

@@ -11,8 +11,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import 'emoji-mart/css/emoji-mart.css'
 import { Picker } from 'emoji-mart'
 
-import phaserGame from '../PhaserGame'
-import Game from '../scenes/Game'
+import chatService from '../services/ChatService'
 
 import { getColorByString } from '../util'
 import { useAppDispatch, useAppSelector } from '../hooks'
@@ -170,7 +169,6 @@ export default function Chat() {
   const focused = useAppSelector((state) => state.chat.focused)
   const showChat = useAppSelector((state) => state.chat.showChat)
   const dispatch = useAppDispatch()
-  const game = phaserGame.scene.keys.game as Game
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setInputValue(event.target.value)
@@ -201,8 +199,7 @@ export default function Chat() {
     const val = inputValue.trim()
     setInputValue('')
     if (val) {
-      game.network.addChatMessage(val)
-      game.myPlayer.updateDialogBubble(val)
+      chatService.sendPublicMessage(val)
     }
   }
 

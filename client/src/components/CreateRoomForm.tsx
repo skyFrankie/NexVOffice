@@ -12,6 +12,7 @@ import { useAppSelector } from '../hooks'
 
 import phaserGame from '../PhaserGame'
 import Bootstrap from '../scenes/Bootstrap'
+import networkService from '../services/NetworkService'
 
 const CreateRoomFormWrapper = styled.form`
   display: flex;
@@ -48,7 +49,8 @@ export const CreateRoomForm = () => {
     // create custom room if name and description are not empty
     if (isValidName && isValidDescription && lobbyJoined) {
       const bootstrap = phaserGame.scene.keys.bootstrap as Bootstrap
-      bootstrap.network
+      networkService
+        .getNetwork()
         .createCustom(values)
         .then(() => bootstrap.launchGame())
         .catch((error) => console.error(error))

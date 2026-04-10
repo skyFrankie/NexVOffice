@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 import Network from '../services/Network'
+import networkService from '../services/NetworkService'
 import { BackgroundMode } from '../../../types/BackgroundMode'
 import store from '../stores'
 import { setRoomJoined } from '../stores/RoomStore'
@@ -85,6 +86,18 @@ export default class Bootstrap extends Phaser.Scene {
 
   init() {
     this.network = new Network()
+    networkService.setNetwork(this.network)
+
+    // Subscribe to store changes for background mode side effects
+    let prevBackgroundMode = store.getState().user.backgroundMode
+    const unsubscribeStore = store.subscribe(() => {
+      const backgroundMode = store.getState().user.backgroundMode
+      if (backgroundMode !== prevBackgroundMode) {
+        this.changeBackgroundMode(backgroundMode)
+        prevBackgroundMode = backgroundMode
+      }
+    })
+    this.events.once('shutdown', unsubscribeStore)
   }
 
   private launchBackground(backgroundMode: BackgroundMode) {

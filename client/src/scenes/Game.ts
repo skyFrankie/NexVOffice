@@ -169,6 +169,46 @@ export default class Game extends Phaser.Scene {
     this.network.onItemUserAdded(this.handleItemUserAdded, this)
     this.network.onItemUserRemoved(this.handleItemUserRemoved, this)
     this.network.onChatMessageAdded(this.handleChatMessageAdded, this)
+
+    // Subscribe to store changes for keyboard control and network disconnect side effects
+    let prevChatFocused = store.getState().chat.focused
+    let prevComputerOpen = store.getState().computer.computerDialogOpen
+    let prevWhiteboardOpen = store.getState().whiteboard.whiteboardDialogOpen
+    let prevComputerId = store.getState().computer.computerId
+    let prevWhiteboardId = store.getState().whiteboard.whiteboardId
+
+    const unsubscribeStore = store.subscribe(() => {
+      const state = store.getState()
+      const chatFocused = state.chat.focused
+      const computerOpen = state.computer.computerDialogOpen
+      const whiteboardOpen = state.whiteboard.whiteboardDialogOpen
+
+      const shouldDisable = chatFocused || computerOpen || whiteboardOpen
+      const wasDisabled = prevChatFocused || prevComputerOpen || prevWhiteboardOpen
+
+      if (shouldDisable && !wasDisabled) {
+        this.disableKeys()
+      } else if (!shouldDisable && wasDisabled) {
+        this.enableKeys()
+      }
+
+      // Handle network disconnect when computer dialog closes
+      if (prevComputerOpen && !computerOpen && prevComputerId) {
+        this.network.disconnectFromComputer(prevComputerId)
+      }
+
+      // Handle network disconnect when whiteboard dialog closes
+      if (prevWhiteboardOpen && !whiteboardOpen && prevWhiteboardId) {
+        this.network.disconnectFromWhiteboard(prevWhiteboardId)
+      }
+
+      prevChatFocused = chatFocused
+      prevComputerOpen = computerOpen
+      prevWhiteboardOpen = whiteboardOpen
+      prevComputerId = state.computer.computerId
+      prevWhiteboardId = state.whiteboard.whiteboardId
+    })
+    this.events.once('shutdown', unsubscribeStore)
   }
 
   private handleItemSelectorOverlap(playerSelector, selectionItem) {
@@ -277,8 +317,12 @@ export default class Game extends Phaser.Scene {
   }
 
   private handleChatMessageAdded(playerId: string, content: string) {
-    const otherPlayer = this.otherPlayerMap.get(playerId)
-    otherPlayer?.updateDialogBubble(content)
+    if (playerId === this.network.mySessionId) {
+      this.myPlayer?.updateDialogBubble(content)
+    } else {
+      const otherPlayer = this.otherPlayerMap.get(playerId)
+      otherPlayer?.updateDialogBubble(content)
+    }
   }
 
   update(t: number, dt: number) {

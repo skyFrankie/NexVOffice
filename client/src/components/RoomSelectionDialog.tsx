@@ -16,6 +16,7 @@ import { useAppSelector } from '../hooks'
 
 import phaserGame from '../PhaserGame'
 import Bootstrap from '../scenes/Bootstrap'
+import networkService from '../services/NetworkService'
 
 const Backdrop = styled.div`
   position: absolute;
@@ -110,7 +111,8 @@ export default function RoomSelectionDialog() {
   const handleConnect = () => {
     if (lobbyJoined) {
       const bootstrap = phaserGame.scene.keys.bootstrap as Bootstrap
-      bootstrap.network
+      networkService
+        .getNetwork()
         .joinOrCreatePublic()
         .then(() => bootstrap.launchGame())
         .catch((error) => console.error(error))

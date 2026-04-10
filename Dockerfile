@@ -1,7 +1,7 @@
 # ---- NexVOffice: Single-container build ----
 # Colyseus (Express) serves both the API/WebSocket and the static client files.
 
-FROM node:18-alpine AS build
+FROM node:20-alpine AS build
 
 WORKDIR /app
 
@@ -22,7 +22,7 @@ COPY client/ client/
 RUN cd client && yarn install --frozen-lockfile && yarn build
 
 # ---- Production ----
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /app
 

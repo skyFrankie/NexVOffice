@@ -1,3 +1,4 @@
+CREATE EXTENSION IF NOT EXISTS vector;--> statement-breakpoint
 CREATE TYPE "public"."chat_channel_type" AS ENUM('public', 'room', 'dm', 'npc');--> statement-breakpoint
 CREATE TYPE "public"."npc_type" AS ENUM('agent', 'ghost');--> statement-breakpoint
 CREATE TYPE "public"."task_status" AS ENUM('todo', 'in_progress', 'done');--> statement-breakpoint

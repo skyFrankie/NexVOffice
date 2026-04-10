@@ -1,0 +1,12 @@
+version: "3.8"
+
+services:
+  skyoffice:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "80:2567"
+    environment:
+      - PORT=2567

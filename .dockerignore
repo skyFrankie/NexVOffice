@@ -1,0 +1,9 @@
+node_modules
+client/node_modules
+types/node_modules
+server/lib
+client/dist
+.git
+*.md
+.vscode
+.github

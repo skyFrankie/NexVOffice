@@ -20,6 +20,7 @@ import {
   pushPlayerLeftMessage,
 } from '../stores/ChatStore'
 import { setWhiteboardUrls } from '../stores/WhiteboardStore'
+import { logout } from '../stores/AuthStore'
 
 export default class Network {
   private client: Client
@@ -64,26 +65,51 @@ export default class Network {
 
   // method to join the public lobby
   async joinOrCreatePublic() {
-    this.room = await this.client.joinOrCreate(RoomType.PUBLIC)
-    this.initialize()
+    const token = store.getState().auth.token
+    try {
+      this.room = await this.client.joinOrCreate(RoomType.PUBLIC, { token })
+      this.initialize()
+    } catch (err: any) {
+      if (err?.message?.includes('401') || err?.code === 401) {
+        store.dispatch(logout())
+      }
+      throw err
+    }
   }
 
   // method to join a custom room
   async joinCustomById(roomId: string, password: string | null) {
-    this.room = await this.client.joinById(roomId, { password })
-    this.initialize()
+    const token = store.getState().auth.token
+    try {
+      this.room = await this.client.joinById(roomId, { password, token })
+      this.initialize()
+    } catch (err: any) {
+      if (err?.message?.includes('401') || err?.code === 401) {
+        store.dispatch(logout())
+      }
+      throw err
+    }
   }
 
   // method to create a custom room
   async createCustom(roomData: IRoomData) {
+    const token = store.getState().auth.token
     const { name, description, password, autoDispose } = roomData
-    this.room = await this.client.create(RoomType.CUSTOM, {
-      name,
-      description,
-      password,
-      autoDispose,
-    })
-    this.initialize()
+    try {
+      this.room = await this.client.create(RoomType.CUSTOM, {
+        name,
+        description,
+        password,
+        autoDispose,
+        token,
+      })
+      this.initialize()
+    } catch (err: any) {
+      if (err?.message?.includes('401') || err?.code === 401) {
+        store.dispatch(logout())
+      }
+      throw err
+    }
   }
 
   // set up all network listeners before the game starts

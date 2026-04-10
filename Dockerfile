@@ -35,6 +35,9 @@ RUN cd types && yarn install --frozen-lockfile --production 2>/dev/null || true
 # Compiled server
 COPY --from=build /app/server/lib server/lib
 
+# Database migrations
+COPY --from=build /app/server/db/migrations server/db/migrations
+
 # Built client static files
 COPY --from=build /app/client/dist client/dist
 

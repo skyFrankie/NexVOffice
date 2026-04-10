@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt'
 import { Room, Client, ServerError } from 'colyseus'
+import { authService, AuthPayload } from '../auth/service'
 import { Dispatcher } from '@colyseus/command'
 import { Player, OfficeState, Computer, Whiteboard } from './schema/OfficeState'
 import { Message } from '../../types/Messages'
@@ -217,18 +218,33 @@ export class SkyOffice extends Room<OfficeState> {
     })
   }
 
-  async onAuth(client: Client, options: { password: string | null }) {
+  async onAuth(client: Client, options: { password?: string | null; token?: string }) {
+    if (!options.token) {
+      throw new ServerError(401, 'No token provided')
+    }
+    const user = await authService.verifyToken(options.token)
+    if (!user) {
+      throw new ServerError(401, 'Invalid or expired token')
+    }
+
     if (this.password) {
+      if (!options.password) {
+        throw new ServerError(403, 'Password required')
+      }
       const validPassword = await bcrypt.compare(options.password, this.password)
       if (!validPassword) {
         throw new ServerError(403, 'Password is incorrect!')
       }
     }
-    return true
+
+    return user
   }
 
-  onJoin(client: Client, options: any) {
-    this.state.players.set(client.sessionId, new Player())
+  onJoin(client: Client, options: any, auth: AuthPayload) {
+    const player = new Player()
+    player.name = auth.displayName
+    player.anim = `${auth.avatar}_idle_down`
+    this.state.players.set(client.sessionId, player)
     client.send(Message.SEND_ROOM_DATA, {
       id: this.roomId,
       name: this.name,

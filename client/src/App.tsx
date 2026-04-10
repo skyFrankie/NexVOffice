@@ -1,9 +1,10 @@
-import React from 'react'
+import React, { useEffect, useRef } from 'react'
 import styled from 'styled-components'
 
 import { useAppSelector } from './hooks'
+import { useAuth } from './hooks/useAuth'
 
-import RoomSelectionDialog from './components/RoomSelectionDialog'
+import LoginPage from './components/auth/LoginPage'
 import LoginDialog from './components/LoginDialog'
 import ComputerDialog from './components/ComputerDialog'
 import WhiteboardDialog from './components/WhiteboardDialog'
@@ -12,6 +13,10 @@ import Chat from './components/Chat'
 import HelperButtonGroup from './components/HelperButtonGroup'
 import MobileVirtualJoystick from './components/MobileVirtualJoystick'
 
+import phaserGame from './PhaserGame'
+import Bootstrap from './scenes/Bootstrap'
+import networkService from './services/NetworkService'
+
 const Backdrop = styled.div`
   position: absolute;
   height: 100%;
@@ -19,11 +24,44 @@ const Backdrop = styled.div`
 `
 
 function App() {
+  const { isAuthenticated } = useAuth()
   const loggedIn = useAppSelector((state) => state.user.loggedIn)
   const computerDialogOpen = useAppSelector((state) => state.computer.computerDialogOpen)
   const whiteboardDialogOpen = useAppSelector((state) => state.whiteboard.whiteboardDialogOpen)
   const videoConnected = useAppSelector((state) => state.user.videoConnected)
   const roomJoined = useAppSelector((state) => state.room.roomJoined)
+  const lobbyJoined = useAppSelector((state) => state.room.lobbyJoined)
+
+  // Track whether we've already triggered the auto-join to avoid double-joining
+  const autoJoinTriggered = useRef(false)
+
+  // Once authenticated and lobby is ready, auto-join the public room
+  useEffect(() => {
+    if (isAuthenticated && lobbyJoined && !roomJoined && !autoJoinTriggered.current) {
+      autoJoinTriggered.current = true
+      const bootstrap = phaserGame.scene.keys.bootstrap as Bootstrap
+      networkService
+        .getNetwork()
+        .joinOrCreatePublic()
+        .then(() => bootstrap.launchGame())
+        .catch((error) => {
+          console.error('Auto-join failed:', error)
+          autoJoinTriggered.current = false
+        })
+    }
+  }, [isAuthenticated, lobbyJoined, roomJoined])
+
+  // Reset auto-join flag if user logs out
+  useEffect(() => {
+    if (!isAuthenticated) {
+      autoJoinTriggered.current = false
+    }
+  }, [isAuthenticated])
+
+  // Not authenticated — show login page (Phaser is running in background but hidden behind LoginPage)
+  if (!isAuthenticated) {
+    return <LoginPage />
+  }
 
   let ui: JSX.Element
   if (loggedIn) {
@@ -45,11 +83,11 @@ function App() {
       )
     }
   } else if (roomJoined) {
-    /* Render LoginDialog if not logged in but selected a room. */
+    /* Render LoginDialog (avatar/name selection) once the room is joined. */
     ui = <LoginDialog />
   } else {
-    /* Render RoomSelectionDialog if yet selected a room. */
-    ui = <RoomSelectionDialog />
+    /* Room not yet joined — show nothing while auto-join is in progress. */
+    ui = <></>
   }
 
   return (

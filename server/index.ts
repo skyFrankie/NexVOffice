@@ -1,3 +1,4 @@
+import 'express-async-errors'
 import http from 'http'
 import express from 'express'
 import cors from 'cors'
@@ -8,6 +9,11 @@ import { RoomType } from '../types/Rooms'
 // import socialRoutes from "@colyseus/social/express"
 
 import { SkyOffice } from './rooms/SkyOffice'
+import { runMigrations } from './db/migrate'
+import { seedAdmin } from './db/seed'
+import authRoutes from './auth/routes'
+import userRoutes from './api/users'
+import { authMiddleware, adminOnly } from './auth/middleware'
 
 const port = Number(process.env.PORT || 2567)
 const app = express()
@@ -39,8 +45,16 @@ gameServer.define(RoomType.CUSTOM, SkyOffice).enableRealtimeListing()
  */
 // app.use("/", socialRoutes);
 
-// register colyseus monitor AFTER registering your room handlers
-app.use('/colyseus', monitor())
+app.use('/auth', authRoutes)
+app.use('/api/users', userRoutes)
 
-gameServer.listen(port)
-console.log(`Listening on ws://localhost:${port}`)
+// register colyseus monitor AFTER registering your room handlers
+app.use('/colyseus', authMiddleware, adminOnly, monitor())
+
+async function start() {
+  await runMigrations()
+  await seedAdmin()
+  gameServer.listen(port)
+  console.log(`Listening on ws://localhost:${port}`)
+}
+start().catch((err) => { console.error('Startup failed:', err); process.exit(1) })

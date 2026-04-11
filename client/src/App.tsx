@@ -13,6 +13,7 @@ import ChatPanel from './components/chat'
 import HelperButtonGroup from './components/HelperButtonGroup'
 import MobileVirtualJoystick from './components/MobileVirtualJoystick'
 import RoomIndicator from './components/game/RoomIndicator'
+import MeetingPanel from './components/game/MeetingPanel'
 
 import phaserGame from './PhaserGame'
 import Bootstrap from './scenes/Bootstrap'
@@ -98,6 +99,7 @@ function App() {
       {!computerDialogOpen && !whiteboardDialogOpen && <HelperButtonGroup />}
       {/* Render RoomIndicator when in-game to show current zone name. */}
       {loggedIn && <RoomIndicator />}
+      {loggedIn && <MeetingPanel />}
     </Backdrop>
   )
 }

@@ -33,5 +33,31 @@ services:
       timeout: 5s
       retries: 5
 
+  peerjs:
+    image: peerjs/peerjs-server
+    command: peerjs --port 9000 --path /peerjs
+    restart: unless-stopped
+    expose:
+      - "9000"
+
+  coturn:
+    image: coturn/coturn
+    restart: unless-stopped
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "49152-49200:49152-49200/udp"
+    command: >
+      turnserver
+      --user=nexvoffice:${TURN_PASSWORD:-nexvoffice_dev}
+      --realm=nexvoffice
+      --min-port=49152
+      --max-port=49200
+      --no-tls
+      --no-dtls
+      --fingerprint
+      --lt-cred-mech
+      --log-file=stdout
+
 volumes:
   pgdata:

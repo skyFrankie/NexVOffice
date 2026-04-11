@@ -220,6 +220,29 @@ export class SkyOffice extends Room<OfficeState> {
               }
               if (newZone) {
                 client.send(Message.ENTER_ZONE, { zone: newZone })
+
+                // Collect all other players currently in this zone
+                const zoneMembers: string[] = []
+                this.state.players.forEach((p, sessionId) => {
+                  if (sessionId !== client.sessionId && p.currentZone === newZoneId) {
+                    zoneMembers.push(sessionId)
+                  }
+                })
+
+                // Tell the new player about existing zone members
+                if (zoneMembers.length > 0) {
+                  client.send(Message.ZONE_MEMBERS, { members: zoneMembers })
+                }
+
+                // Tell existing zone members about the new player
+                this.clients.forEach(c => {
+                  if (c.sessionId !== client.sessionId) {
+                    const p = this.state.players.get(c.sessionId)
+                    if (p && p.currentZone === newZoneId) {
+                      c.send(Message.ZONE_MEMBERS, { members: [client.sessionId] })
+                    }
+                  }
+                })
               }
             }
           }

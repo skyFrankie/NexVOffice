@@ -24,6 +24,7 @@ export enum Message {
   LEAVE_ZONE,
   JOIN_VOICE,
   LEAVE_VOICE,
+  ZONE_MEMBERS,
 
   // NEW — NPC
   START_NPC_CONVERSATION,

@@ -25,6 +25,7 @@ import {
 } from '../stores/ChatStore'
 import { setWhiteboardUrls } from '../stores/WhiteboardStore'
 import { logout } from '../stores/AuthStore'
+import { voiceService } from './VoiceService'
 
 export default class Network {
   private client: Client
@@ -237,6 +238,13 @@ export default class Network {
 
     this.room.onMessage(Message.LEAVE_ZONE, () => {
       store.dispatch(clearRoomChat())
+    })
+
+    // When server sends zone member list for voice peer discovery
+    this.room.onMessage(Message.ZONE_MEMBERS, ({ members }: { members: string[] }) => {
+      for (const sessionId of members) {
+        voiceService.connectToPeer(sessionId)
+      }
     })
 
     // when a peer disconnects with myPeer

@@ -405,9 +405,15 @@ export default class Game extends Phaser.Scene {
         }
       }
       if (newZoneId !== this.currentZoneId) {
+        const oldZoneId = this.currentZoneId
         this.currentZoneId = newZoneId
-        const zone = this.zones.find((z) => z.roomId === newZoneId)
-        phaserEvents.emit(Event.ENTER_ZONE, zone || null)
+        if (oldZoneId) {
+          phaserEvents.emit(Event.LEAVE_ZONE)
+        }
+        if (newZoneId) {
+          const zone = this.zones.find((z) => z.roomId === newZoneId)
+          phaserEvents.emit(Event.ENTER_ZONE, zone)
+        }
       }
     }
   }

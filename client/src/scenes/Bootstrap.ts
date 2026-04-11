@@ -1,6 +1,7 @@
 import Phaser from 'phaser'
 import Network from '../services/Network'
 import networkService from '../services/NetworkService'
+import roomService from '../services/RoomService'
 import { BackgroundMode } from '../../../types/BackgroundMode'
 import store from '../stores'
 import { setRoomJoined } from '../stores/RoomStore'
@@ -141,6 +142,9 @@ export default class Bootstrap extends Phaser.Scene {
       network: this.network,
       mapData: this.mapData,
     })
+
+    // Initialize room service for voice auto-join on zone enter
+    roomService.init(this.network.mySessionId)
 
     // update Redux state
     store.dispatch(setRoomJoined(true))

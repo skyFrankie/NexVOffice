@@ -2,6 +2,7 @@ import React from 'react'
 import styled from 'styled-components'
 import IconButton from '@mui/material/IconButton'
 import CloseIcon from '@mui/icons-material/Close'
+import { Excalidraw } from '@excalidraw/excalidraw'
 
 import { useAppSelector, useAppDispatch } from '../hooks'
 import { closeWhiteboardDialog } from '../stores/WhiteboardStore'
@@ -41,16 +42,10 @@ const WhiteboardWrapper = styled.div`
   border-radius: 25px;
   overflow: hidden;
   margin-right: 25px;
-
-  iframe {
-    width: 100%;
-    height: 100%;
-    background: #fff;
-  }
 `
 
 export default function WhiteboardDialog() {
-  const whiteboardUrl = useAppSelector((state) => state.whiteboard.whiteboardUrl)
+  const whiteboardDialogOpen = useAppSelector((state) => state.whiteboard.whiteboardDialogOpen)
   const dispatch = useAppDispatch()
 
   return (
@@ -63,9 +58,9 @@ export default function WhiteboardDialog() {
         >
           <CloseIcon />
         </IconButton>
-        {whiteboardUrl && (
+        {whiteboardDialogOpen && (
           <WhiteboardWrapper>
-            <iframe title="white board" src={whiteboardUrl} />
+            <Excalidraw theme="dark" />
           </WhiteboardWrapper>
         )}
       </Wrapper>

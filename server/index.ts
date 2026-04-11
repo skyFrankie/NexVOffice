@@ -25,6 +25,22 @@ app.use(cors())
 app.use(express.json())
 app.use(express.static('client/dist'))
 
+// PeerJS proxy — forward /peerjs requests to the peerjs container
+import { createProxyMiddleware } from 'http-proxy-middleware'
+app.use('/peerjs', createProxyMiddleware({
+  target: 'http://peerjs:9000',
+  changeOrigin: true,
+  ws: true,
+}))
+
+// TURN credentials endpoint for WebRTC clients (authenticated)
+app.get('/api/turn-credentials', authMiddleware, (_req, res) => {
+  res.json({
+    username: process.env.TURN_USERNAME || 'nexvoffice',
+    credential: process.env.TURN_PASSWORD || 'nexvoffice_dev',
+  })
+})
+
 const server = http.createServer(app)
 const gameServer = new Server({
   server,

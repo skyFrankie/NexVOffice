@@ -21,6 +21,9 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   playerContainer: Phaser.GameObjects.Container
   private playerDialogBubble: Phaser.GameObjects.Container
   private timeoutID?: number
+  private hpBarGraphics?: Phaser.GameObjects.Graphics
+  private hp = 100
+  private maxHp = 100
 
   constructor(
     scene: Phaser.Scene,
@@ -53,12 +56,53 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       .setOrigin(0.5)
     this.playerContainer.add(this.playerName)
 
+    // HP bar above player name — hidden by default (full HP)
+    this.hpBarGraphics = this.scene.add.graphics()
+    this.hpBarGraphics.setDepth(5001)
+    this.hpBarGraphics.setVisible(false)
+
     this.scene.physics.world.enable(this.playerContainer)
     const playContainerBody = this.playerContainer.body as Phaser.Physics.Arcade.Body
     const collisionScale = [0.5, 0.2]
     playContainerBody
       .setSize(this.width * collisionScale[0], this.height * collisionScale[1])
       .setOffset(-8, this.height * (1 - collisionScale[1]) + 6)
+  }
+
+  updateHp(hp: number, maxHp: number) {
+    this.hp = hp
+    this.maxHp = maxHp
+    this.redrawHpBar()
+  }
+
+  private redrawHpBar() {
+    if (!this.hpBarGraphics) return
+
+    const isFull = this.hp >= this.maxHp
+    if (isFull) {
+      this.hpBarGraphics.setVisible(false)
+      return
+    }
+
+    this.hpBarGraphics.setVisible(true)
+    this.hpBarGraphics.clear()
+
+    const barW = 40
+    const barH = 4
+    // position: above player, offset from container position
+    const bx = this.x - barW / 2
+    const by = this.y - this.height * 0.5 - 14
+
+    // background track
+    this.hpBarGraphics.fillStyle(0x333333, 0.8)
+    this.hpBarGraphics.fillRect(bx, by, barW, barH)
+
+    // fill
+    const percent = this.maxHp > 0 ? this.hp / this.maxHp : 0
+    const fillW = Math.max(0, barW * percent)
+    const color = percent > 0.6 ? 0x22c55e : percent > 0.3 ? 0xeab308 : 0xef4444
+    this.hpBarGraphics.fillStyle(color, 1)
+    this.hpBarGraphics.fillRect(bx, by, fillW, barH)
   }
 
   updateDialogBubble(content: string) {
@@ -100,8 +144,16 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     }, 6000)
   }
 
-  private clearDialogBubble() {
+  clearDialogBubble() {
     clearTimeout(this.timeoutID)
     this.playerDialogBubble.removeAll(true)
+  }
+
+  preUpdate(t: number, dt: number) {
+    super.preUpdate(t, dt)
+    // Keep HP bar positioned above the player sprite as it moves
+    if (this.hpBarGraphics && this.hpBarGraphics.visible) {
+      this.redrawHpBar()
+    }
   }
 }

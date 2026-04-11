@@ -15,11 +15,17 @@ import { ItemType } from '../../../types/Items'
 import { NavKeys } from '../../../types/KeyboardState'
 import { JoystickMovement } from '../components/Joystick'
 import { openURL } from '../utils/helpers'
+import NPCCharacter from './NPCCharacter'
+import npcService from '../services/NPCService'
 
 export default class MyPlayer extends Player {
   private playContainerBody: Phaser.Physics.Arcade.Body
   private chairOnSit?: Chair
   public joystickMovement?: JoystickMovement
+  private beatCooldown = false
+  private keyB?: Phaser.Input.Keyboard.Key
+  private otherPlayersRef?: Phaser.Physics.Arcade.Group
+
   constructor(
     scene: Phaser.Scene,
     x: number,
@@ -30,6 +36,11 @@ export default class MyPlayer extends Player {
   ) {
     super(scene, x, y, texture, id, frame)
     this.playContainerBody = this.playerContainer.body as Phaser.Physics.Arcade.Body
+  }
+
+  registerBeatKey(keyB: Phaser.Input.Keyboard.Key, otherPlayers: Phaser.Physics.Arcade.Group) {
+    this.keyB = keyB
+    this.otherPlayersRef = otherPlayers
   }
 
   setPlayerName(name: string) {
@@ -60,6 +71,15 @@ export default class MyPlayer extends Player {
     const item = playerSelector.selectedItem
 
     if (Phaser.Input.Keyboard.JustDown(keyR)) {
+      // Check for NPC interaction via playerSelector.selectedNpc
+      const npc = (playerSelector as any).selectedNpc as NPCCharacter | undefined
+      if (npc && !npcService.isInConversation) {
+        const label = npc.playerName.text.replace('[NPC] ', '')
+        npcService.startConversation(npc.npcId, label)
+        this.playerBehavior = PlayerBehavior.TALKING_TO_NPC
+        return
+      }
+
       switch (item?.itemType) {
         case ItemType.COMPUTER:
           const computer = item as Computer
@@ -71,9 +91,35 @@ export default class MyPlayer extends Player {
           break
         case ItemType.VENDINGMACHINE:
           // hacky and hard-coded, but leaving it as is for now
-          const url = 'https://www.buymeacoffee.com/skyoffice'
+          const url = 'https://www.mcdonalds.com/'
           openURL(url)
           break
+      }
+    }
+
+    // B key: beat nearby player
+    if (this.keyB && Phaser.Input.Keyboard.JustDown(this.keyB) && !this.beatCooldown) {
+      if (this.otherPlayersRef) {
+        let nearestId: string | null = null
+        let nearestDist = Infinity
+        this.otherPlayersRef.getChildren().forEach((child) => {
+          const other = child as any
+          const dx = other.x - this.x
+          const dy = other.y - this.y
+          const dist = Math.sqrt(dx * dx + dy * dy)
+          if (dist < 96 && dist < nearestDist) {
+            nearestDist = dist
+            nearestId = other.playerId
+          }
+        })
+        if (nearestId) {
+          network.beatPlayer(nearestId)
+          this.beatCooldown = true
+          this.scene.time.delayedCall(3000, () => {
+            this.beatCooldown = false
+          })
+          phaserEvents.emit(Event.PLAYER_BEAT, nearestId)
+        }
       }
     }
 

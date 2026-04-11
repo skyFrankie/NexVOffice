@@ -247,6 +247,8 @@ export default class Network {
       }
     })
 
+    // NPC_RESPONSE is handled by NPCService.setRoom() — no duplicate handler here
+
     // when a peer disconnects with myPeer
     this.room.onMessage(Message.DISCONNECT_STREAM, (clientId: string) => {
       this.webRTC?.deleteOnCalledVideoStream(clientId)
@@ -256,6 +258,21 @@ export default class Network {
     this.room.onMessage(Message.STOP_SCREEN_SHARE, (clientId: string) => {
       const computerState = store.getState().computer
       computerState.shareScreenManager?.onUserLeft(clientId)
+    })
+
+    // HP update from server
+    this.room.onMessage(Message.HP_UPDATE, ({ userId, hp, maxHp }: { userId: string; hp: number; maxHp: number }) => {
+      phaserEvents.emit(Event.HP_UPDATE, { userId, hp, maxHp })
+    })
+
+    // Task assigned notification
+    this.room.onMessage(Message.TASK_ASSIGNED, (data) => {
+      store.dispatch({ type: 'tasks/upsertTask', payload: data })
+    })
+
+    // Task updated notification
+    this.room.onMessage(Message.TASK_UPDATED, ({ taskId, status }: { taskId: string; status: string }) => {
+      store.dispatch({ type: 'tasks/patchTaskStatus', payload: { taskId, status } })
     })
   }
 
@@ -366,5 +383,38 @@ export default class Network {
 
   sendRoomMessage(content: string) {
     this.room?.send(Message.SEND_ROOM_MESSAGE, { content })
+  }
+
+  // NPC methods
+  startNpcConversation(npcId: string) {
+    this.room?.send(Message.START_NPC_CONVERSATION, { npcId })
+  }
+
+  sendNpcMessage(npcId: string, content: string) {
+    this.room?.send(Message.NPC_MESSAGE, { npcId, content })
+  }
+
+  endNpcConversation(npcId: string) {
+    this.room?.send(Message.END_NPC_CONVERSATION, { npcId })
+  }
+
+  mentionNpc(npcName: string, content: string, roomId: string) {
+    this.room?.send(Message.MENTION_NPC, { npcName, content, roomId })
+  }
+
+  onNpcResponse(callback: (npcId: string, content: string) => void, context?: any) {
+    phaserEvents.on(Event.NPC_RESPONSE, callback, context)
+  }
+
+  beatPlayer(targetSessionId: string) {
+    this.room?.send(Message.BEAT_PLAYER, { targetUserId: targetSessionId })
+  }
+
+  onHpUpdate(callback: (data: { userId: string; hp: number; maxHp: number }) => void, context?: any) {
+    phaserEvents.on(Event.HP_UPDATE, callback, context)
+  }
+
+  getRoom() {
+    return this.room
   }
 }

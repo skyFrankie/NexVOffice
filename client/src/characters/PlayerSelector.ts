@@ -1,10 +1,12 @@
 import Phaser from 'phaser'
 import MyPlayer from './MyPlayer'
+import NPCCharacter from './NPCCharacter'
 import { PlayerBehavior } from '../../../types/PlayerBehavior'
 import Item from '../items/Item'
 import { NavKeys } from '../../../types/KeyboardState'
 export default class PlayerSelector extends Phaser.GameObjects.Zone {
   selectedItem?: Item
+  selectedNpc?: NPCCharacter
 
   constructor(scene: Phaser.Scene, x: number, y: number, width: number, height: number) {
     super(scene, x, y, width, height)
@@ -52,5 +54,24 @@ export default class PlayerSelector extends Phaser.GameObjects.Zone {
         this.selectedItem = undefined
       }
     }
+
+    // while near an NPC, if selector moves away clear the NPC prompt
+    if (this.selectedNpc) {
+      if (!this.scene.physics.overlap(this, this.selectedNpc)) {
+        this.selectedNpc.clearDialogBubble()
+        this.selectedNpc = undefined
+      }
+    }
+  }
+
+  onNpcOverlap(npc: NPCCharacter) {
+    if (this.selectedNpc === npc) return
+    // Clear previous NPC prompt if changed
+    if (this.selectedNpc) {
+      this.selectedNpc.clearDialogBubble()
+    }
+    this.selectedNpc = npc
+    const label = npc.playerName.text.replace('[NPC] ', '')
+    npc.showInteractionPrompt(label)
   }
 }

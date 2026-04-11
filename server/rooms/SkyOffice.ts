@@ -17,15 +17,20 @@ import {
   WhiteboardRemoveUserCommand,
 } from './commands/WhiteboardUpdateArrayCommand'
 import ChatMessageUpdateCommand from './commands/ChatMessageUpdateCommand'
+import BeatPlayerCommand from './commands/BeatPlayerCommand'
 import { db } from '../db/connection'
-import { officeLayout, roomPlacements, roomTemplates, chatChannels, chatMessages as chatMessagesTable } from '../db/schema'
+import { officeLayout, roomPlacements, roomTemplates, chatChannels, chatMessages as chatMessagesTable, npcAgents, playerStats } from '../db/schema'
 import { eq, and, or, like } from 'drizzle-orm'
 import { stitchMap, MapPlacement, RoomZone } from '../map/stitcher'
 import { findPlayerZone } from '../map/zones'
 import { RoomZoneState } from './schema/RoomZone'
+import { NPCEngine } from '../npc/engine'
+import { registerRoom, unregisterRoom } from './registry'
 
 export class SkyOffice extends Room<OfficeState> {
   private dispatcher = new Dispatcher(this)
+  private npcEngine = new NPCEngine()
+  private mentionCooldowns = new Map<string, number>()
   private name: string
   private description: string
   private password: string | null = null
@@ -47,6 +52,7 @@ export class SkyOffice extends Room<OfficeState> {
     this.setMetadata({ name, description, hasPassword })
 
     this.setState(new OfficeState())
+    registerRoom(this as any)
 
     // Load map data for item and zone initialization
     try {
@@ -147,6 +153,14 @@ export class SkyOffice extends Room<OfficeState> {
       }
     } catch (err) {
       console.error('Failed to load public channel:', err)
+    }
+
+    // Initialize NPC Engine — spawn AI NPCs as synthetic players
+    try {
+      await this.npcEngine.init(this)
+      console.log('[SkyOffice] NPC Engine initialized')
+    } catch (err) {
+      console.error('[SkyOffice] Failed to initialize NPC Engine:', err)
     }
 
     // when a player connect to a computer, add to the computer connectedUser array
@@ -422,56 +436,137 @@ export class SkyOffice extends Room<OfficeState> {
       })
     })
 
-    this.onMessage(Message.MENTION_NPC, (client, message) => {
-      // TODO: Phase 3
+    // @mention NPC in meeting room chat
+    this.onMessage(Message.MENTION_NPC, async (client, message: { npcName: string; content: string }) => {
+      if (!message.npcName || !message.content) return
+      const content = String(message.content).slice(0, 500)
+      const sender = this.state.players.get(client.sessionId)
+      if (!sender || !sender.currentZone) return
+      const userId = (client.auth as AuthPayload)?.id
+      if (!userId) return
+
+      // Rate limit: 1 mention per 3 seconds per user
+      const now = Date.now()
+      const lastMention = this.mentionCooldowns.get(userId) || 0
+      if (now - lastMention < 3000) return
+      this.mentionCooldowns.set(userId, now)
+
+      // Find NPC by name
+      const npcs = await db.select().from(npcAgents)
+        .where(and(eq(npcAgents.name, message.npcName), eq(npcAgents.isActive, true)))
+        .limit(1)
+      if (npcs.length === 0) return
+
+      // Collect participants in the zone
+      const participants: string[] = []
+      this.state.players.forEach((p, sid) => {
+        if (p.currentZone === sender.currentZone) participants.push(p.name)
+      })
+
+      try {
+        const response = await this.npcEngine.handleMention(
+          npcs[0].id, sender.currentZone, content, participants, userId
+        )
+        // Broadcast NPC response to the room zone
+        this.clients.forEach(c => {
+          const p = this.state.players.get(c.sessionId)
+          if (p && p.currentZone === sender.currentZone) {
+            c.send(Message.NPC_RESPONSE, {
+              npcId: npcs[0].id,
+              npcName: npcs[0].name,
+              content: response,
+              isMention: true,
+            })
+          }
+        })
+      } catch (err) {
+        console.error('[SkyOffice] NPC mention error:', err)
+      }
     })
 
-    this.onMessage(Message.START_PROXIMITY_CHAT, (client, message) => {
-      // TODO: Phase 3
+    this.onMessage(Message.START_PROXIMITY_CHAT, (_client, _message) => {
+      // Reserved for future proximity chat feature
     })
 
-    // TODO: Phase 3 — Zones
-    this.onMessage(Message.ENTER_ZONE, (client, message) => {
-      // TODO: Phase 3
+    // Zone enter/leave/voice — handled via UPDATE_PLAYER zone detection above
+    this.onMessage(Message.ENTER_ZONE, (_client, _message) => {})
+    this.onMessage(Message.LEAVE_ZONE, (_client, _message) => {})
+    this.onMessage(Message.JOIN_VOICE, (_client, _message) => {})
+    this.onMessage(Message.LEAVE_VOICE, (_client, _message) => {})
+
+    // NPC Conversation — Start
+    this.onMessage(Message.START_NPC_CONVERSATION, async (client, message: { npcId: string }) => {
+      if (!message.npcId) return
+      const userId = (client.auth as AuthPayload)?.id
+      if (!userId) return
+
+      try {
+        const result = await this.npcEngine.startNpcConversation(message.npcId, userId)
+        client.send(Message.NPC_RESPONSE, {
+          npcId: message.npcId,
+          content: result.greeting,
+          sessionId: result.sessionId,
+        })
+      } catch (err) {
+        console.error('[SkyOffice] NPC start conversation error:', err)
+      }
     })
 
-    this.onMessage(Message.LEAVE_ZONE, (client, message) => {
-      // TODO: Phase 3
+    // NPC Conversation — Message
+    this.onMessage(Message.NPC_MESSAGE, async (client, message: { npcId: string; content: string }) => {
+      if (!message.npcId || !message.content) return
+      const userId = (client.auth as AuthPayload)?.id
+      if (!userId) return
+
+      try {
+        const response = await this.npcEngine.handleNpcMessage(message.npcId, userId, message.content)
+        client.send(Message.NPC_RESPONSE, {
+          npcId: message.npcId,
+          content: response,
+        })
+      } catch (err) {
+        console.error('[SkyOffice] NPC message error:', err)
+      }
     })
 
-    this.onMessage(Message.JOIN_VOICE, (client, message) => {
-      // TODO: Phase 3
+    // NPC Conversation — End
+    this.onMessage(Message.END_NPC_CONVERSATION, async (client, message: { npcId: string }) => {
+      if (!message.npcId) return
+      const userId = (client.auth as AuthPayload)?.id
+      if (!userId) return
+
+      try {
+        await this.npcEngine.stopNpcConversation(message.npcId, userId)
+      } catch (err) {
+        console.error('[SkyOffice] NPC end conversation error:', err)
+      }
     })
 
-    this.onMessage(Message.LEAVE_VOICE, (client, message) => {
-      // TODO: Phase 3
+    // Gamification — Beat Player
+    this.onMessage(Message.BEAT_PLAYER, (client, message: { targetUserId: string }) => {
+      if (!message.targetUserId) return
+      this.dispatcher.dispatch(new BeatPlayerCommand(), {
+        client,
+        targetId: message.targetUserId,
+      })
     })
 
-    // TODO: Phase 3 — NPC
-    this.onMessage(Message.START_NPC_CONVERSATION, (client, message) => {
-      // TODO: Phase 3
+    // Tasks — client forwards notification after REST call succeeds
+    this.onMessage(Message.TASK_ASSIGNED, (client, message: { assignedTo: string; taskId: string; title: string }) => {
+      if (!message.assignedTo || !message.taskId) return
+      // Forward to the assigned user if online
+      this.clients.forEach(c => {
+        const auth = c.auth as AuthPayload | null
+        if (auth?.id === message.assignedTo && c.sessionId !== client.sessionId) {
+          c.send(Message.TASK_ASSIGNED, message)
+        }
+      })
     })
 
-    this.onMessage(Message.NPC_MESSAGE, (client, message) => {
-      // TODO: Phase 3
-    })
-
-    this.onMessage(Message.END_NPC_CONVERSATION, (client, message) => {
-      // TODO: Phase 3
-    })
-
-    // TODO: Phase 3 — Gamification
-    this.onMessage(Message.BEAT_PLAYER, (client, message) => {
-      // TODO: Phase 3
-    })
-
-    // TODO: Phase 3 — Tasks
-    this.onMessage(Message.TASK_ASSIGNED, (client, message) => {
-      // TODO: Phase 3
-    })
-
-    this.onMessage(Message.TASK_UPDATED, (client, message) => {
-      // TODO: Phase 3
+    this.onMessage(Message.TASK_UPDATED, (client, message: { taskId: string; status: string }) => {
+      if (!message.taskId) return
+      // Broadcast task updates to all connected clients except sender
+      this.broadcast(Message.TASK_UPDATED, message, { except: client })
     })
   }
 
@@ -497,12 +592,27 @@ export class SkyOffice extends Room<OfficeState> {
     return user
   }
 
-  onJoin(client: Client, options: any, auth: AuthPayload) {
+  async onJoin(client: Client, options: any, auth: AuthPayload) {
     const player = new Player()
     player.name = auth.displayName
     player.anim = `${auth.avatar}_idle_down`
     player.x = this.state.spawnX
     player.y = this.state.spawnY
+
+    // Load persisted HP from player_stats
+    try {
+      const stats = await db.select().from(playerStats).where(eq(playerStats.userId, auth.id)).limit(1)
+      if (stats.length > 0) {
+        player.hp = stats[0].hp
+        player.maxHp = stats[0].maxHp
+      } else {
+        // First login — create player_stats row
+        await db.insert(playerStats).values({ userId: auth.id, hp: 100, maxHp: 100 })
+      }
+    } catch (err) {
+      console.error('Failed to load player stats:', err)
+    }
+
     this.state.players.set(client.sessionId, player)
     client.send(Message.SEND_ROOM_DATA, {
       id: this.roomId,
@@ -532,6 +642,8 @@ export class SkyOffice extends Room<OfficeState> {
       if (whiteboardRoomIds.has(whiteboard.roomId)) whiteboardRoomIds.delete(whiteboard.roomId)
     })
 
+    unregisterRoom(this as any)
+    this.npcEngine.dispose()
     console.log('room', this.roomId, 'disposing...')
     this.dispatcher.stop()
   }

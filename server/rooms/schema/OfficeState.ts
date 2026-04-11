@@ -16,6 +16,10 @@ export class Player extends Schema implements IPlayer {
   @type('boolean') readyToConnect = false
   @type('boolean') videoConnected = false
   @type('string') currentZone = ''
+  @type('number') hp = 100
+  @type('number') maxHp = 100
+  @type('number') lastBeatAt = 0
+  @type('boolean') isNpc = false
 }
 
 export class Computer extends Schema implements IComputer {

@@ -16,7 +16,11 @@ import userRoutes from './api/users'
 import mapRoutes from './api/map'
 import adminRoutes from './api/admin'
 import chatRoutes from './api/chat'
+import npcRoutes from './api/npc'
+import taskRoutes from './api/tasks'
 import { authMiddleware, adminOnly } from './auth/middleware'
+import { startHpResetCron } from './gamification/hp-reset'
+import { activeRooms } from './rooms/registry'
 
 const port = Number(process.env.PORT || 2567)
 const app = express()
@@ -69,6 +73,8 @@ app.use('/api/users', userRoutes)
 app.use('/api/map', mapRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/chat', chatRoutes)
+app.use('/api/npcs', npcRoutes)
+app.use('/api/tasks', taskRoutes)
 
 // register colyseus monitor AFTER registering your room handlers
 app.use('/colyseus', authMiddleware, adminOnly, monitor())
@@ -79,5 +85,8 @@ async function start() {
   await seedDefaultLayout()
   gameServer.listen(port)
   console.log(`Listening on ws://localhost:${port}`)
+
+  // Start daily HP reset cron — activeRooms is populated by SkyOffice onCreate/onDispose
+  startHpResetCron(() => activeRooms)
 }
 start().catch((err) => { console.error('Startup failed:', err); process.exit(1) })

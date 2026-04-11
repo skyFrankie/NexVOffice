@@ -4,4 +4,5 @@ export const config = {
   jwtSecret: process.env.JWT_SECRET || 'nexvoffice_dev_secret',
   jwtExpiresIn: '24h',
   bcryptRounds: 10,
+  awsRegion: process.env.AWS_REGION || 'us-east-1',
 }

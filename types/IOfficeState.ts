@@ -8,6 +8,10 @@ export interface IPlayer extends Schema {
   readyToConnect: boolean
   videoConnected: boolean
   currentZone: string
+  hp: number
+  maxHp: number
+  lastBeatAt: number
+  isNpc: boolean
 }
 
 export interface IRoomZone extends Schema {

@@ -11,13 +11,17 @@ import Whiteboard from '../items/Whiteboard'
 import VendingMachine from '../items/VendingMachine'
 import '../characters/MyPlayer'
 import '../characters/OtherPlayer'
+import '../characters/NPCCharacter'
 import MyPlayer from '../characters/MyPlayer'
 import OtherPlayer from '../characters/OtherPlayer'
+import NPCCharacter from '../characters/NPCCharacter'
 import PlayerSelector from '../characters/PlayerSelector'
 import Network from '../services/Network'
+import npcService from '../services/NPCService'
 import { IPlayer } from '../../../types/IOfficeState'
 import { PlayerBehavior } from '../../../types/PlayerBehavior'
 import { ItemType } from '../../../types/Items'
+import { Message } from '../../../types/Messages'
 
 import store from '../stores'
 import { setFocused, setShowChat } from '../stores/ChatStore'
@@ -28,11 +32,13 @@ export default class Game extends Phaser.Scene {
   private cursors!: NavKeys
   private keyE!: Phaser.Input.Keyboard.Key
   private keyR!: Phaser.Input.Keyboard.Key
+  private keyB!: Phaser.Input.Keyboard.Key
   private map!: Phaser.Tilemaps.Tilemap
   myPlayer!: MyPlayer
-  private playerSelector!: Phaser.GameObjects.Zone
+  private playerSelector!: PlayerSelector
   private otherPlayers!: Phaser.Physics.Arcade.Group
   private otherPlayerMap = new Map<string, OtherPlayer>()
+  private npcMap = new Map<string, NPCCharacter>()
   computerMap = new Map<string, Computer>()
   private whiteboardMap = new Map<string, Whiteboard>()
   private currentZoneId: string = ''
@@ -51,6 +57,7 @@ export default class Game extends Phaser.Scene {
     // maybe we can have a dedicated method for adding keys if more keys are needed in the future
     this.keyE = this.input.keyboard.addKey('E')
     this.keyR = this.input.keyboard.addKey('R')
+    this.keyB = this.input.keyboard.addKey('B')
     this.input.keyboard.disableGlobalCapture()
     this.input.keyboard.on('keydown-ENTER', (event) => {
       store.dispatch(setShowChat(true))
@@ -213,6 +220,14 @@ export default class Game extends Phaser.Scene {
       this
     )
 
+    this.physics.add.overlap(
+      this.playerSelector,
+      this.otherPlayers,
+      this.handleNpcSelectorOverlap,
+      undefined,
+      this
+    )
+
     // register network event listeners
     this.network.onPlayerJoined(this.handlePlayerJoined, this)
     this.network.onPlayerLeft(this.handlePlayerLeft, this)
@@ -222,6 +237,14 @@ export default class Game extends Phaser.Scene {
     this.network.onItemUserAdded(this.handleItemUserAdded, this)
     this.network.onItemUserRemoved(this.handleItemUserRemoved, this)
     this.network.onChatMessageAdded(this.handleChatMessageAdded, this)
+    this.network.onNpcResponse(this.handleNpcResponse, this)
+    this.network.onHpUpdate(this.handleHpUpdate, this)
+
+    // Register B key for beat mechanic on myPlayer
+    this.myPlayer.registerBeatKey(this.keyB, this.otherPlayers)
+
+    // Give NPCService access to the room for sending/receiving NPC messages
+    npcService.setRoom(this.network.getRoom())
 
     // Subscribe to store changes for keyboard control and network disconnect side effects
     let prevChatFocused = store.getState().chat.focused
@@ -320,6 +343,24 @@ export default class Game extends Phaser.Scene {
 
   // function to add new player to the otherPlayer group
   private handlePlayerJoined(newPlayer: IPlayer, id: string) {
+    // Check if this is an NPC player
+    if ((newPlayer as any).isNpc) {
+      const npcType = (newPlayer as any).npcType || 'agent'
+      const npcId = (newPlayer as any).npcId || id
+      const npc = (this.add as any).npcCharacter(
+        newPlayer.x,
+        newPlayer.y,
+        'adam',
+        id,
+        newPlayer.name,
+        npcType,
+        npcId
+      ) as NPCCharacter
+      this.otherPlayers.add(npc)
+      this.npcMap.set(id, npc)
+      return
+    }
+
     const otherPlayer = this.add.otherPlayer(newPlayer.x, newPlayer.y, 'adam', id, newPlayer.name)
     this.otherPlayers.add(otherPlayer)
     this.otherPlayerMap.set(id, otherPlayer)
@@ -327,11 +368,30 @@ export default class Game extends Phaser.Scene {
 
   // function to remove the player who left from the otherPlayer group
   private handlePlayerLeft(id: string) {
+    if (this.npcMap.has(id)) {
+      const npc = this.npcMap.get(id)
+      if (!npc) return
+      this.otherPlayers.remove(npc, true, true)
+      this.npcMap.delete(id)
+      return
+    }
+
     if (this.otherPlayerMap.has(id)) {
       const otherPlayer = this.otherPlayerMap.get(id)
       if (!otherPlayer) return
       this.otherPlayers.remove(otherPlayer, true, true)
       this.otherPlayerMap.delete(id)
+    }
+  }
+
+  private handleNpcResponse(npcId: string, content: string) {
+    // Update typing state on the NPC character matching this npcId
+    for (const [, npc] of this.npcMap) {
+      if (npc.npcId === npcId) {
+        npc.setTyping(false)
+        npc.updateDialogBubble(content)
+        break
+      }
     }
   }
 
@@ -350,7 +410,13 @@ export default class Game extends Phaser.Scene {
   }
 
   private handlePlayersOverlap(myPlayer, otherPlayer) {
+    if (otherPlayer instanceof NPCCharacter) return
     otherPlayer.makeCall(myPlayer, this.network?.webRTC)
+  }
+
+  private handleNpcSelectorOverlap(playerSelector, entity) {
+    if (!(entity instanceof NPCCharacter)) return
+    ;(playerSelector as PlayerSelector).onNpcOverlap(entity)
   }
 
   private handleItemUserAdded(playerId: string, itemId: string, itemType: ItemType) {
@@ -379,6 +445,17 @@ export default class Game extends Phaser.Scene {
     } else {
       const otherPlayer = this.otherPlayerMap.get(playerId)
       otherPlayer?.updateDialogBubble(content)
+    }
+  }
+
+  private handleHpUpdate({ userId, hp, maxHp }: { userId: string; hp: number; maxHp: number }) {
+    if (userId === this.network.mySessionId) {
+      // React PlayerHUD subscribes to this event directly via phaserEvents
+      // Also update local player's in-world HP bar
+      this.myPlayer?.updateHp(hp, maxHp)
+    } else {
+      const otherPlayer = this.otherPlayerMap.get(userId)
+      otherPlayer?.updateHp(hp, maxHp)
     }
   }
 

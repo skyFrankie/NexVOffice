@@ -25,6 +25,10 @@ import {
   setShowChat,
   ChatMessageEntry,
 } from '../../stores/ChatStore'
+import npcService from '../../services/NPCService'
+
+// Regex to detect @npcname mentions (word chars, hyphens, underscores)
+const MENTION_REGEX = /@([\w\-_]+)/g
 
 const Backdrop = styled.div`
   position: fixed;
@@ -179,6 +183,24 @@ const dateFormatter = new Intl.DateTimeFormat('en', {
   dateStyle: 'short',
 })
 
+function renderWithMentions(content: string) {
+  const parts = content.split(MENTION_REGEX)
+  const result: React.ReactNode[] = []
+  // split() with a capture group alternates: text, match, text, match...
+  for (let i = 0; i < parts.length; i++) {
+    if (i % 2 === 0) {
+      result.push(parts[i])
+    } else {
+      result.push(
+        <strong key={i} style={{ color: '#42eacb' }}>
+          @{parts[i]}
+        </strong>
+      )
+    }
+  }
+  return result
+}
+
 const Message = ({ chatMessage, messageType }: ChatMessageEntry) => {
   const [tooltipOpen, setTooltipOpen] = useState(false)
 
@@ -195,7 +217,7 @@ const Message = ({ chatMessage, messageType }: ChatMessageEntry) => {
       >
         {messageType === MessageType.REGULAR_MESSAGE ? (
           <p style={{ color: getColorByString(chatMessage.author) }}>
-            {chatMessage.author}: <span>{chatMessage.content}</span>
+            {chatMessage.author}: <span>{renderWithMentions(chatMessage.content)}</span>
           </p>
         ) : (
           <p className="notification">
@@ -264,6 +286,13 @@ export default function ChatPanel() {
       chatService.sendPublicMessage(val)
     } else if (activeTab === 'room') {
       chatService.sendRoomMessage(val)
+      // Detect @npcname mentions and fire MENTION_NPC for each unique mention
+      const mentions = [...new Set([...val.matchAll(MENTION_REGEX)].map((m) => m[1]))]
+      if (mentions.length > 0 && currentRoomId) {
+        for (const npcName of mentions) {
+          npcService.mentionNpc(npcName, val, currentRoomId)
+        }
+      }
     } else if (activeTab === 'dm' && activeDmPartnerId) {
       chatService.sendDm(activeDmPartnerId, val)
     }

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import styled from 'styled-components'
 
 import { useAppSelector } from './hooks'
@@ -10,10 +10,13 @@ import ComputerDialog from './components/ComputerDialog'
 import WhiteboardDialog from './components/WhiteboardDialog'
 import VideoConnectionDialog from './components/VideoConnectionDialog'
 import ChatPanel from './components/chat'
+import NPCDialog from './components/chat/NPCDialog'
 import HelperButtonGroup from './components/HelperButtonGroup'
 import MobileVirtualJoystick from './components/MobileVirtualJoystick'
 import RoomIndicator from './components/game/RoomIndicator'
 import MeetingPanel from './components/game/MeetingPanel'
+import PlayerHUD from './components/game/PlayerHUD'
+import TaskPanel from './components/tasks/TaskPanel'
 
 import phaserGame from './PhaserGame'
 import Bootstrap from './scenes/Bootstrap'
@@ -23,6 +26,29 @@ const Backdrop = styled.div`
   position: absolute;
   height: 100%;
   width: 100%;
+`
+
+const TaskToggleButton = styled.button`
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(34, 38, 57, 0.9);
+  border: 1px solid rgba(100, 181, 246, 0.4);
+  color: #64b5f6;
+  font-size: 20px;
+  cursor: pointer;
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+
+  &:hover {
+    background: rgba(100, 181, 246, 0.2);
+  }
 `
 
 function App() {
@@ -36,6 +62,7 @@ function App() {
 
   // Track whether we've already triggered the auto-join to avoid double-joining
   const autoJoinTriggered = useRef(false)
+  const [taskPanelOpen, setTaskPanelOpen] = useState(false)
 
   // Once authenticated and lobby is ready, auto-join the public room
   useEffect(() => {
@@ -100,6 +127,18 @@ function App() {
       {/* Render RoomIndicator when in-game to show current zone name. */}
       {loggedIn && <RoomIndicator />}
       {loggedIn && <MeetingPanel />}
+      {/* Render NPC conversation dialog when talking to an NPC. */}
+      {loggedIn && <NPCDialog />}
+      {/* Player HP bar (bottom-left) */}
+      {loggedIn && <PlayerHUD />}
+      {/* Task panel (slide-in from right) */}
+      {loggedIn && <TaskPanel open={taskPanelOpen} />}
+      {/* Task panel toggle button */}
+      {loggedIn && !computerDialogOpen && !whiteboardDialogOpen && (
+        <TaskToggleButton onClick={() => setTaskPanelOpen((v) => !v)} title="Toggle Tasks">
+          ☑
+        </TaskToggleButton>
+      )}
     </Backdrop>
   )
 }

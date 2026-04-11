@@ -37,7 +37,7 @@ export const roomTemplates = pgTable('room_templates', {
   heightBlocks: integer('height_blocks').notNull().default(1),
   tileData: jsonb('tile_data').notNull(),
   isBuiltIn: boolean('is_built_in').notNull().default(false),
-  features: jsonb('features').notNull().default([]),
+  features: jsonb('features').notNull().default({}),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 })
 

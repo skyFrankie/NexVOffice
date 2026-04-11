@@ -7,6 +7,7 @@ import { setRoomJoined } from '../stores/RoomStore'
 
 export default class Bootstrap extends Phaser.Scene {
   private preloadComplete = false
+  private mapData: any = null
   network!: Network
 
   constructor() {
@@ -28,7 +29,9 @@ export default class Bootstrap extends Phaser.Scene {
     this.load.image('backdrop_night', 'assets/background/backdrop_night.png')
     this.load.image('sun_moon', 'assets/background/sun_moon.png')
 
+    // Load static tilemap as fallback — will be overwritten in launchGame() if API data arrives
     this.load.tilemapTiledJSON('tilemap', 'assets/map/map.json')
+
     this.load.spritesheet('tiles_wall', 'assets/map/FloorAndGround.png', {
       frameWidth: 32,
       frameHeight: 32,
@@ -104,11 +107,39 @@ export default class Bootstrap extends Phaser.Scene {
     this.scene.launch('background', { backgroundMode })
   }
 
-  launchGame() {
+  async launchGame() {
     if (!this.preloadComplete) return
+
+    // Fetch map data from API (done here instead of init() because Phaser doesn't await async init)
+    if (!this.mapData) {
+      const token = store.getState().auth.token
+      try {
+        const res = await fetch('/api/map', {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (res.ok) {
+          this.mapData = await res.json()
+        } else {
+          console.error('Failed to fetch map:', res.status)
+        }
+      } catch (err) {
+        console.error('Failed to fetch map:', err)
+      }
+    }
+
+    // Overwrite static tilemap cache with API data if available
+    if (this.mapData?.tilemap) {
+      this.cache.tilemap.remove('tilemap')
+      this.cache.tilemap.add('tilemap', {
+        data: this.mapData.tilemap,
+        format: Phaser.Tilemaps.Formats.TILED_JSON,
+      })
+    }
+
     this.network.webRTC?.checkPreviousPermission()
     this.scene.launch('game', {
       network: this.network,
+      mapData: this.mapData,
     })
 
     // update Redux state

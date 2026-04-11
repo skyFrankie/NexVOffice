@@ -10,9 +10,11 @@ import { RoomType } from '../types/Rooms'
 
 import { SkyOffice } from './rooms/SkyOffice'
 import { runMigrations } from './db/migrate'
-import { seedAdmin } from './db/seed'
+import { seedAdmin, seedDefaultLayout } from './db/seed'
 import authRoutes from './auth/routes'
 import userRoutes from './api/users'
+import mapRoutes from './api/map'
+import adminRoutes from './api/admin'
 import { authMiddleware, adminOnly } from './auth/middleware'
 
 const port = Number(process.env.PORT || 2567)
@@ -47,6 +49,8 @@ gameServer.define(RoomType.CUSTOM, SkyOffice).enableRealtimeListing()
 
 app.use('/auth', authRoutes)
 app.use('/api/users', userRoutes)
+app.use('/api/map', mapRoutes)
+app.use('/api/admin', adminRoutes)
 
 // register colyseus monitor AFTER registering your room handlers
 app.use('/colyseus', authMiddleware, adminOnly, monitor())
@@ -54,6 +58,7 @@ app.use('/colyseus', authMiddleware, adminOnly, monitor())
 async function start() {
   await runMigrations()
   await seedAdmin()
+  await seedDefaultLayout()
   gameServer.listen(port)
   console.log(`Listening on ws://localhost:${port}`)
 }

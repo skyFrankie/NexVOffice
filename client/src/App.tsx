@@ -12,6 +12,7 @@ import VideoConnectionDialog from './components/VideoConnectionDialog'
 import Chat from './components/Chat'
 import HelperButtonGroup from './components/HelperButtonGroup'
 import MobileVirtualJoystick from './components/MobileVirtualJoystick'
+import RoomIndicator from './components/game/RoomIndicator'
 
 import phaserGame from './PhaserGame'
 import Bootstrap from './scenes/Bootstrap'
@@ -95,6 +96,8 @@ function App() {
       {ui}
       {/* Render HelperButtonGroup if no dialogs are opened. */}
       {!computerDialogOpen && !whiteboardDialogOpen && <HelperButtonGroup />}
+      {/* Render RoomIndicator when in-game to show current zone name. */}
+      {loggedIn && <RoomIndicator />}
     </Backdrop>
   )
 }

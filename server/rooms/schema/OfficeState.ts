@@ -6,6 +6,7 @@ import {
   IWhiteboard,
   IChatMessage,
 } from '../../../types/IOfficeState'
+import { RoomZoneState } from './RoomZone'
 
 export class Player extends Schema implements IPlayer {
   @type('string') name = ''
@@ -14,6 +15,7 @@ export class Player extends Schema implements IPlayer {
   @type('string') anim = 'adam_idle_down'
   @type('boolean') readyToConnect = false
   @type('boolean') videoConnected = false
+  @type('string') currentZone = ''
 }
 
 export class Computer extends Schema implements IComputer {
@@ -43,6 +45,12 @@ export class OfficeState extends Schema implements IOfficeState {
 
   @type([ChatMessage])
   chatMessages = new ArraySchema<ChatMessage>()
+
+  @type({ map: RoomZoneState })
+  zones = new MapSchema<RoomZoneState>()
+
+  @type('number') spawnX = 705
+  @type('number') spawnY = 500
 }
 
 export const whiteboardRoomIds = new Set<string>()

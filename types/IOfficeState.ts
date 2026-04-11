@@ -7,6 +7,20 @@ export interface IPlayer extends Schema {
   anim: string
   readyToConnect: boolean
   videoConnected: boolean
+  currentZone: string
+}
+
+export interface IRoomZone extends Schema {
+  roomId: string
+  roomName: string
+  x: number
+  y: number
+  w: number
+  h: number
+  voice: boolean
+  screenshare: boolean
+  whiteboard: boolean
+  privateChat: boolean
 }
 
 export interface IComputer extends Schema {
@@ -29,4 +43,7 @@ export interface IOfficeState extends Schema {
   computers: MapSchema<IComputer>
   whiteboards: MapSchema<IWhiteboard>
   chatMessages: ArraySchema<IChatMessage>
+  zones: MapSchema<IRoomZone>
+  spawnX: number
+  spawnY: number
 }

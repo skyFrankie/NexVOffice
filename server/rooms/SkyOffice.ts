@@ -17,12 +17,19 @@ import {
   WhiteboardRemoveUserCommand,
 } from './commands/WhiteboardUpdateArrayCommand'
 import ChatMessageUpdateCommand from './commands/ChatMessageUpdateCommand'
+import { db } from '../db/connection'
+import { officeLayout, roomPlacements, roomTemplates } from '../db/schema'
+import { eq } from 'drizzle-orm'
+import { stitchMap, MapPlacement, RoomZone } from '../map/stitcher'
+import { findPlayerZone } from '../map/zones'
+import { RoomZoneState } from './schema/RoomZone'
 
 export class SkyOffice extends Room<OfficeState> {
   private dispatcher = new Dispatcher(this)
   private name: string
   private description: string
   private password: string | null = null
+  private roomZones: RoomZone[] | null = null
 
   async onCreate(options: IRoomData) {
     const { name, description, password, autoDispose } = options
@@ -40,14 +47,92 @@ export class SkyOffice extends Room<OfficeState> {
 
     this.setState(new OfficeState())
 
-    // HARD-CODED: Add 5 computers in a room
-    for (let i = 0; i < 5; i++) {
-      this.state.computers.set(String(i), new Computer())
-    }
+    // Load map data for item and zone initialization
+    try {
+      const layouts = await db.select().from(officeLayout).limit(1)
+      if (layouts.length > 0) {
+        const layout = layouts[0]
+        const placementsWithTemplates = await db
+          .select({
+            id: roomPlacements.id,
+            templateId: roomPlacements.templateId,
+            gridX: roomPlacements.gridX,
+            gridY: roomPlacements.gridY,
+            roomName: roomPlacements.roomName,
+            templateName: roomTemplates.name,
+            widthBlocks: roomTemplates.widthBlocks,
+            heightBlocks: roomTemplates.heightBlocks,
+            tileData: roomTemplates.tileData,
+            features: roomTemplates.features,
+          })
+          .from(roomPlacements)
+          .innerJoin(roomTemplates, eq(roomPlacements.templateId, roomTemplates.id))
+          .where(eq(roomPlacements.layoutId, layout.id))
 
-    // HARD-CODED: Add 3 whiteboards in a room
-    for (let i = 0; i < 3; i++) {
-      this.state.whiteboards.set(String(i), new Whiteboard())
+        const mapPlacements: MapPlacement[] = placementsWithTemplates.map(p => ({
+          id: p.id,
+          templateId: p.templateId,
+          gridX: p.gridX,
+          gridY: p.gridY,
+          roomName: p.roomName,
+          template: {
+            name: p.templateName,
+            widthBlocks: p.widthBlocks,
+            heightBlocks: p.heightBlocks,
+            tileData: p.tileData,
+            features: (p.features as any) || { voice: false, screenshare: false, whiteboard: false, privateChat: false },
+            itemSlots: ((p.features as any)?.itemSlots) || [],
+          },
+        }))
+
+        const result = stitchMap(mapPlacements, layout.gridWidth, layout.gridHeight)
+
+        // Create computers and whiteboards from item placements
+        let computerIndex = 0
+        let whiteboardIndex = 0
+        for (const item of result.itemPlacements) {
+          if (item.type === 'computer') {
+            this.state.computers.set(String(computerIndex++), new Computer())
+          } else if (item.type === 'whiteboard') {
+            this.state.whiteboards.set(String(whiteboardIndex++), new Whiteboard())
+          }
+        }
+
+        // Load zones into state
+        for (const zone of result.zones) {
+          const zoneState = new RoomZoneState()
+          zoneState.roomId = zone.roomId
+          zoneState.roomName = zone.roomName
+          zoneState.x = zone.bounds.x
+          zoneState.y = zone.bounds.y
+          zoneState.w = zone.bounds.w
+          zoneState.h = zone.bounds.h
+          zoneState.voice = zone.features.voice
+          zoneState.screenshare = zone.features.screenshare
+          zoneState.whiteboard = zone.features.whiteboard
+          zoneState.privateChat = zone.features.privateChat
+          this.state.zones.set(zone.roomId, zoneState)
+        }
+
+        // Set spawn point
+        this.state.spawnX = result.spawnPoint.x
+        this.state.spawnY = result.spawnPoint.y
+
+        // Store zones for server-side zone detection
+        this.roomZones = result.zones
+
+        console.log(`Map loaded: ${result.itemPlacements.length} items, ${result.zones.length} zones`)
+      } else {
+        // Fallback: no layout exists, create minimal defaults
+        for (let i = 0; i < 5; i++) this.state.computers.set(String(i), new Computer())
+        for (let i = 0; i < 3; i++) this.state.whiteboards.set(String(i), new Whiteboard())
+        console.log('No layout found, using default items')
+      }
+    } catch (err) {
+      console.error('Failed to load map data:', err)
+      // Fallback to hard-coded
+      for (let i = 0; i < 5; i++) this.state.computers.set(String(i), new Computer())
+      for (let i = 0; i < 3; i++) this.state.whiteboards.set(String(i), new Whiteboard())
     }
 
     // when a player connect to a computer, add to the computer connectedUser array
@@ -107,6 +192,24 @@ export class SkyOffice extends Room<OfficeState> {
           y: message.y,
           anim: message.anim,
         })
+        // Check zone changes
+        if (this.roomZones) {
+          const player = this.state.players.get(client.sessionId)
+          if (player) {
+            const newZone = findPlayerZone(message.x, message.y, this.roomZones)
+            const newZoneId = newZone?.roomId || ''
+            if (newZoneId !== player.currentZone) {
+              const oldZoneId = player.currentZone
+              player.currentZone = newZoneId
+              if (oldZoneId) {
+                client.send(Message.LEAVE_ZONE, { roomId: oldZoneId })
+              }
+              if (newZone) {
+                client.send(Message.ENTER_ZONE, { zone: newZone })
+              }
+            }
+          }
+        }
       }
     )
 
@@ -244,6 +347,8 @@ export class SkyOffice extends Room<OfficeState> {
     const player = new Player()
     player.name = auth.displayName
     player.anim = `${auth.avatar}_idle_down`
+    player.x = this.state.spawnX
+    player.y = this.state.spawnY
     this.state.players.set(client.sessionId, player)
     client.send(Message.SEND_ROOM_DATA, {
       id: this.roomId,

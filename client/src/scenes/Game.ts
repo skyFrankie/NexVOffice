@@ -2,6 +2,7 @@ import Phaser from 'phaser'
 
 // import { debugDraw } from '../utils/debug'
 import { createCharacterAnims } from '../anims/CharacterAnims'
+import { phaserEvents, Event } from '../events/EventCenter'
 
 import Item from '../items/Item'
 import Chair from '../items/Chair'
@@ -34,6 +35,8 @@ export default class Game extends Phaser.Scene {
   private otherPlayerMap = new Map<string, OtherPlayer>()
   computerMap = new Map<string, Computer>()
   private whiteboardMap = new Map<string, Whiteboard>()
+  private currentZoneId: string = ''
+  private zones: Array<{ roomId: string; roomName: string; bounds: { x: number; y: number; w: number; h: number } }> = []
 
   constructor() {
     super('game')
@@ -66,7 +69,7 @@ export default class Game extends Phaser.Scene {
     this.input.keyboard.enabled = true
   }
 
-  create(data: { network: Network }) {
+  create(data: { network: Network; mapData?: any }) {
     if (!data.network) {
       throw new Error('server instance missing')
     } else {
@@ -83,52 +86,102 @@ export default class Game extends Phaser.Scene {
 
     // debugDraw(groundLayer, this)
 
-    this.myPlayer = this.add.myPlayer(705, 500, 'adam', this.network.mySessionId)
+    // Use configurable spawn point from mapData, fall back to hard-coded default
+    const spawnX = data.mapData?.spawnPoint?.x ?? 705
+    const spawnY = data.mapData?.spawnPoint?.y ?? 500
+    this.myPlayer = this.add.myPlayer(spawnX, spawnY, 'adam', this.network.mySessionId)
     this.playerSelector = new PlayerSelector(this, 0, 0, 16, 16)
 
-    // import chair objects from Tiled map to Phaser
+    // Load zones from mapData
+    if (data.mapData?.zones) {
+      this.zones = data.mapData.zones
+    }
+
+    // Data-driven items from mapData, with fallback to tilemap object layers
     const chairs = this.physics.add.staticGroup({ classType: Chair })
-    const chairLayer = this.map.getObjectLayer('Chair')
-    chairLayer.objects.forEach((chairObj) => {
-      const item = this.addObjectFromTiled(chairs, chairObj, 'chairs', 'chair') as Chair
-      // custom properties[0] is the object direction specified in Tiled
-      item.itemDirection = chairObj.properties[0].value
-    })
-
-    // import computers objects from Tiled map to Phaser
     const computers = this.physics.add.staticGroup({ classType: Computer })
-    const computerLayer = this.map.getObjectLayer('Computer')
-    computerLayer.objects.forEach((obj, i) => {
-      const item = this.addObjectFromTiled(computers, obj, 'computers', 'computer') as Computer
-      item.setDepth(item.y + item.height * 0.27)
-      const id = `${i}`
-      item.id = id
-      this.computerMap.set(id, item)
-    })
-
-    // import whiteboards objects from Tiled map to Phaser
     const whiteboards = this.physics.add.staticGroup({ classType: Whiteboard })
-    const whiteboardLayer = this.map.getObjectLayer('Whiteboard')
-    whiteboardLayer.objects.forEach((obj, i) => {
-      const item = this.addObjectFromTiled(
-        whiteboards,
-        obj,
-        'whiteboards',
-        'whiteboard'
-      ) as Whiteboard
-      const id = `${i}`
-      item.id = id
-      this.whiteboardMap.set(id, item)
-    })
-
-    // import vending machine objects from Tiled map to Phaser
     const vendingMachines = this.physics.add.staticGroup({ classType: VendingMachine })
-    const vendingMachineLayer = this.map.getObjectLayer('VendingMachine')
-    vendingMachineLayer.objects.forEach((obj, i) => {
-      this.addObjectFromTiled(vendingMachines, obj, 'vendingmachines', 'vendingmachine')
-    })
 
-    // import other objects from Tiled map to Phaser
+    if (data.mapData?.itemPlacements) {
+      let computerIdx = 0
+      let whiteboardIdx = 0
+      for (const item of data.mapData.itemPlacements) {
+        switch (item.type) {
+          case 'chair': {
+            const chair = chairs.get(item.x, item.y, 'chairs', 0) as Chair
+            chair.setDepth(item.y)
+            if (item.direction) chair.itemDirection = item.direction
+            break
+          }
+          case 'computer': {
+            const computer = computers.get(item.x, item.y, 'computers', 0) as Computer
+            computer.setDepth(item.y + 32 * 0.27)
+            const id = String(computerIdx++)
+            computer.id = id
+            this.computerMap.set(id, computer)
+            break
+          }
+          case 'whiteboard': {
+            const wb = whiteboards.get(item.x, item.y, 'whiteboards', 0) as Whiteboard
+            wb.setDepth(item.y)
+            const id = String(whiteboardIdx++)
+            wb.id = id
+            this.whiteboardMap.set(id, wb)
+            break
+          }
+          case 'vendingmachine': {
+            vendingMachines.get(item.x, item.y, 'vendingmachines', 0).setDepth(item.y)
+            break
+          }
+        }
+      }
+    } else {
+      // FALLBACK: read from tilemap object layers (existing behavior)
+      const chairLayer = this.map.getObjectLayer('Chair')
+      if (chairLayer) {
+        chairLayer.objects.forEach((chairObj) => {
+          const item = this.addObjectFromTiled(chairs, chairObj, 'chairs', 'chair') as Chair
+          // custom properties[0] is the object direction specified in Tiled
+          item.itemDirection = chairObj.properties?.[0]?.value
+        })
+      }
+
+      const computerLayer = this.map.getObjectLayer('Computer')
+      if (computerLayer) {
+        computerLayer.objects.forEach((obj, i) => {
+          const item = this.addObjectFromTiled(computers, obj, 'computers', 'computer') as Computer
+          item.setDepth(item.y + item.height * 0.27)
+          const id = `${i}`
+          item.id = id
+          this.computerMap.set(id, item)
+        })
+      }
+
+      const whiteboardLayer = this.map.getObjectLayer('Whiteboard')
+      if (whiteboardLayer) {
+        whiteboardLayer.objects.forEach((obj, i) => {
+          const item = this.addObjectFromTiled(
+            whiteboards,
+            obj,
+            'whiteboards',
+            'whiteboard'
+          ) as Whiteboard
+          const id = `${i}`
+          item.id = id
+          this.whiteboardMap.set(id, item)
+        })
+      }
+
+      const vendingMachineLayer = this.map.getObjectLayer('VendingMachine')
+      if (vendingMachineLayer) {
+        vendingMachineLayer.objects.forEach((obj) => {
+          this.addObjectFromTiled(vendingMachines, obj, 'vendingmachines', 'vendingmachine')
+        })
+      }
+    }
+
+    // import other objects from Tiled map to Phaser (may not exist in stitched maps)
     this.addGroupFromTiled('Wall', 'tiles_wall', 'FloorAndGround', false)
     this.addGroupFromTiled('Objects', 'office', 'Modern_Office_Black_Shadow', false)
     this.addGroupFromTiled('ObjectsOnCollide', 'office', 'Modern_Office_Black_Shadow', true)
@@ -250,15 +303,19 @@ export default class Game extends Phaser.Scene {
   ) {
     const group = this.physics.add.staticGroup()
     const objectLayer = this.map.getObjectLayer(objectLayerName)
+    if (!objectLayer) return group
+    const tileset = this.map.getTileset(tilesetName)
+    if (!tileset) return group
     objectLayer.objects.forEach((object) => {
       const actualX = object.x! + object.width! * 0.5
       const actualY = object.y! - object.height! * 0.5
       group
-        .get(actualX, actualY, key, object.gid! - this.map.getTileset(tilesetName).firstgid)
+        .get(actualX, actualY, key, object.gid! - tileset.firstgid)
         .setDepth(actualY)
     })
     if (this.myPlayer && collidable)
       this.physics.add.collider([this.myPlayer, this.myPlayer.playerContainer], group)
+    return group
   }
 
   // function to add new player to the otherPlayer group
@@ -329,6 +386,29 @@ export default class Game extends Phaser.Scene {
     if (this.myPlayer && this.network) {
       this.playerSelector.update(this.myPlayer, this.cursors)
       this.myPlayer.update(this.playerSelector, this.cursors, this.keyE, this.keyR, this.network)
+    }
+
+    // Check zone boundaries locally for optimistic UI
+    if (this.myPlayer && this.zones.length > 0) {
+      const px = this.myPlayer.x
+      const py = this.myPlayer.y
+      let newZoneId = ''
+      for (const zone of this.zones) {
+        if (
+          px >= zone.bounds.x &&
+          px < zone.bounds.x + zone.bounds.w &&
+          py >= zone.bounds.y &&
+          py < zone.bounds.y + zone.bounds.h
+        ) {
+          newZoneId = zone.roomId
+          break
+        }
+      }
+      if (newZoneId !== this.currentZoneId) {
+        this.currentZoneId = newZoneId
+        const zone = this.zones.find((z) => z.roomId === newZoneId)
+        phaserEvents.emit(Event.ENTER_ZONE, zone || null)
+      }
     }
   }
 }

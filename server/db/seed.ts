@@ -1,5 +1,5 @@
 import { db } from './connection'
-import { users, officeLayout, roomPlacements, roomTemplates } from './schema'
+import { users, officeLayout, roomPlacements, roomTemplates, chatChannels } from './schema'
 import { eq, count } from 'drizzle-orm'
 import bcrypt from 'bcrypt'
 import { config } from '../config'
@@ -71,8 +71,41 @@ export async function seedDefaultLayout() {
     }))
 
   if (placementValues.length > 0) {
-    await db.insert(roomPlacements).values(placementValues)
+    const insertedPlacements = await db.insert(roomPlacements).values(placementValues).returning({
+      id: roomPlacements.id,
+      roomName: roomPlacements.roomName,
+    })
+
+    // Create a room channel for each placement that has a name
+    const roomChannelValues = insertedPlacements
+      .filter(p => p.roomName)
+      .map(p => ({
+        type: 'room' as const,
+        roomId: p.id,
+        name: p.roomName!,
+      }))
+
+    if (roomChannelValues.length > 0) {
+      await db.insert(chatChannels).values(roomChannelValues)
+    }
   }
 
+  await seedPublicChannel()
+
   console.log(`Default office layout seeded: ${placementValues.length} rooms on 5x4 grid`)
+}
+
+export async function seedPublicChannel() {
+  const existing = await db
+    .select({ value: count() })
+    .from(chatChannels)
+    .where(eq(chatChannels.type, 'public'))
+
+  if (existing[0].value > 0) {
+    console.log('Public channel exists, skipping seed.')
+    return
+  }
+
+  await db.insert(chatChannels).values({ type: 'public', name: 'Public' })
+  console.log('Public channel seeded.')
 }

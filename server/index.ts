@@ -15,6 +15,7 @@ import authRoutes from './auth/routes'
 import userRoutes from './api/users'
 import mapRoutes from './api/map'
 import adminRoutes from './api/admin'
+import chatRoutes from './api/chat'
 import { authMiddleware, adminOnly } from './auth/middleware'
 
 const port = Number(process.env.PORT || 2567)
@@ -51,6 +52,7 @@ app.use('/auth', authRoutes)
 app.use('/api/users', userRoutes)
 app.use('/api/map', mapRoutes)
 app.use('/api/admin', adminRoutes)
+app.use('/api/chat', chatRoutes)
 
 // register colyseus monitor AFTER registering your room handlers
 app.use('/colyseus', authMiddleware, adminOnly, monitor())

@@ -61,6 +61,14 @@ class NetworkService {
   playerStreamDisconnect(id: string) {
     this.assertInitialized().playerStreamDisconnect(id)
   }
+
+  sendDm(targetSessionId: string, content: string) {
+    this.assertInitialized().sendDm(targetSessionId, content)
+  }
+
+  sendRoomMessage(content: string) {
+    this.assertInitialized().sendRoomMessage(content)
+  }
 }
 
 export const networkService = new NetworkService()

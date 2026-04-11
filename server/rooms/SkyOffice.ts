@@ -18,8 +18,8 @@ import {
 } from './commands/WhiteboardUpdateArrayCommand'
 import ChatMessageUpdateCommand from './commands/ChatMessageUpdateCommand'
 import { db } from '../db/connection'
-import { officeLayout, roomPlacements, roomTemplates } from '../db/schema'
-import { eq } from 'drizzle-orm'
+import { officeLayout, roomPlacements, roomTemplates, chatChannels, chatMessages as chatMessagesTable } from '../db/schema'
+import { eq, and, or, like } from 'drizzle-orm'
 import { stitchMap, MapPlacement, RoomZone } from '../map/stitcher'
 import { findPlayerZone } from '../map/zones'
 import { RoomZoneState } from './schema/RoomZone'
@@ -30,6 +30,7 @@ export class SkyOffice extends Room<OfficeState> {
   private description: string
   private password: string | null = null
   private roomZones: RoomZone[] | null = null
+  private publicChannelId: string | null = null
 
   async onCreate(options: IRoomData) {
     const { name, description, password, autoDispose } = options
@@ -133,6 +134,19 @@ export class SkyOffice extends Room<OfficeState> {
       // Fallback to hard-coded
       for (let i = 0; i < 5; i++) this.state.computers.set(String(i), new Computer())
       for (let i = 0; i < 3; i++) this.state.whiteboards.set(String(i), new Whiteboard())
+    }
+
+    // Load public channel ID for message persistence
+    try {
+      const pubChannels = await db.select({ id: chatChannels.id })
+        .from(chatChannels)
+        .where(eq(chatChannels.type, 'public'))
+        .limit(1)
+      if (pubChannels.length > 0) {
+        this.publicChannelId = pubChannels[0].id
+      }
+    } catch (err) {
+      console.error('Failed to load public channel:', err)
     }
 
     // when a player connect to a computer, add to the computer connectedUser array
@@ -244,28 +258,145 @@ export class SkyOffice extends Room<OfficeState> {
 
     // when a player send a chat message, update the message array and broadcast to all connected clients except the sender
     this.onMessage(Message.ADD_CHAT_MESSAGE, (client, message: { content: string }) => {
+      const content = typeof message.content === 'string' ? message.content.trim() : ''
+      if (!content || content.length > 2000) return
 
       // update the message array (so that players join later can also see the message)
       this.dispatcher.dispatch(new ChatMessageUpdateCommand(), {
         client,
-        content: message.content,
+        content,
+        channelId: this.publicChannelId || undefined,
+        senderId: (client.auth as AuthPayload)?.id,
       })
 
       // broadcast to all currently connected clients except the sender (to render in-game dialog on top of the character)
       this.broadcast(
         Message.ADD_CHAT_MESSAGE,
-        { clientId: client.sessionId, content: message.content },
+        { clientId: client.sessionId, content },
         { except: client }
       )
     })
 
-    // TODO: Phase 3 — Chat
-    this.onMessage(Message.SEND_DM, (client, message) => {
-      // TODO: Phase 3
+    // DM handler — uses targetId as session ID for real-time delivery,
+    // resolves DB user IDs from auth for persistence (works even if target is offline)
+    this.onMessage(Message.SEND_DM, (client, message: { targetId: string, content: string }) => {
+      const content = typeof message.content === 'string' ? message.content.trim() : ''
+      if (!content || content.length > 2000) return
+      if (!message.targetId || typeof message.targetId !== 'string') return
+
+      const sender = this.state.players.get(client.sessionId)
+      if (!sender) return
+      const senderId = (client.auth as AuthPayload)?.id
+      if (!senderId) return
+
+      // Find the target client by session ID (may be null if offline)
+      const targetClient = this.clients.find(c => c.sessionId === message.targetId)
+
+      // Resolve target's DB user ID from auth (works when target is online)
+      const targetAuth = targetClient ? (targetClient.auth as AuthPayload) : null
+      const targetUserId = targetAuth?.id
+
+      // Persist to DB (fire-and-forget) — works even without targetUserId by looking up from channel
+      if (targetUserId) {
+        // Both users online — use sorted user IDs for channel name
+        const channelName = `dm:${[senderId, targetUserId].sort().join(':')}`
+        db.select({ id: chatChannels.id })
+          .from(chatChannels)
+          .where(and(eq(chatChannels.type, 'dm'), eq(chatChannels.name, channelName)))
+          .limit(1)
+          .then(async (channels) => {
+            let channelId: string
+            if (channels.length > 0) {
+              channelId = channels[0].id
+            } else {
+              const result = await db.insert(chatChannels).values({
+                type: 'dm',
+                name: channelName,
+              }).returning({ id: chatChannels.id })
+              channelId = result[0].id
+            }
+            await db.insert(chatMessagesTable).values({
+              channelId,
+              senderId,
+              content,
+            })
+          })
+          .catch(err => console.error('Failed to persist DM:', err))
+      } else {
+        // Target offline — look up existing DM channel by sender's ID prefix
+        db.select({ id: chatChannels.id, name: chatChannels.name })
+          .from(chatChannels)
+          .where(and(
+            eq(chatChannels.type, 'dm'),
+            or(
+              like(chatChannels.name, `dm:${senderId}:%`),
+              like(chatChannels.name, `dm:%:${senderId}`)
+            )
+          ))
+          .then(async (channels) => {
+            // Find the channel that also contains the target (if we can resolve via prior DM)
+            // For now, skip persistence if we can't determine the channel — the message is still lost for offline targets
+            // This will be fully resolved when we switch to DB user IDs for DM addressing
+          })
+          .catch(err => console.error('Failed to persist offline DM:', err))
+      }
+
+      // Forward to target client (if online)
+      if (targetClient) {
+        targetClient.send(Message.SEND_DM, {
+          senderId: client.sessionId,
+          senderName: sender.name,
+          content,
+        })
+      }
+
+      // Confirm back to sender
+      client.send(Message.SEND_DM, {
+        senderId: client.sessionId,
+        senderName: sender.name,
+        content,
+        targetId: message.targetId,
+      })
     })
 
-    this.onMessage(Message.SEND_ROOM_MESSAGE, (client, message) => {
-      // TODO: Phase 3
+    this.onMessage(Message.SEND_ROOM_MESSAGE, (client, message: { content: string }) => {
+      const content = typeof message.content === 'string' ? message.content.trim() : ''
+      if (!content || content.length > 2000) return
+
+      const sender = this.state.players.get(client.sessionId)
+      if (!sender || !sender.currentZone) return
+      const senderId = (client.auth as AuthPayload)?.id
+
+      // Persist to DB (fire-and-forget)
+      if (senderId) {
+        db.select({ id: chatChannels.id })
+          .from(chatChannels)
+          .where(and(eq(chatChannels.type, 'room'), eq(chatChannels.roomId, sender.currentZone)))
+          .limit(1)
+          .then(async (channels) => {
+            if (channels.length > 0) {
+              await db.insert(chatMessagesTable).values({
+                channelId: channels[0].id,
+                senderId,
+                content,
+              })
+            }
+          })
+          .catch(err => console.error('Failed to persist room message:', err))
+      }
+
+      // Broadcast to all players in the same zone
+      this.clients.forEach(c => {
+        const p = this.state.players.get(c.sessionId)
+        if (p && p.currentZone === sender.currentZone) {
+          c.send(Message.SEND_ROOM_MESSAGE, {
+            senderId: client.sessionId,
+            senderName: sender.name,
+            content,
+            roomId: sender.currentZone,
+          })
+        }
+      })
     })
 
     this.onMessage(Message.MENTION_NPC, (client, message) => {

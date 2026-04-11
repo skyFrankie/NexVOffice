@@ -9,7 +9,7 @@ import LoginDialog from './components/LoginDialog'
 import ComputerDialog from './components/ComputerDialog'
 import WhiteboardDialog from './components/WhiteboardDialog'
 import VideoConnectionDialog from './components/VideoConnectionDialog'
-import Chat from './components/Chat'
+import ChatPanel from './components/chat'
 import HelperButtonGroup from './components/HelperButtonGroup'
 import MobileVirtualJoystick from './components/MobileVirtualJoystick'
 import RoomIndicator from './components/game/RoomIndicator'
@@ -76,7 +76,7 @@ function App() {
       ui = (
         /* Render Chat or VideoConnectionDialog if no dialogs are opened. */
         <>
-          <Chat />
+          <ChatPanel />
           {/* Render VideoConnectionDialog if user is not connected to a webcam. */}
           {!videoConnected && <VideoConnectionDialog />}
           <MobileVirtualJoystick />

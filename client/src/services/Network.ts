@@ -15,9 +15,13 @@ import {
   removeAvailableRooms,
 } from '../stores/RoomStore'
 import {
-  pushChatMessage,
+  pushPublicMessage,
   pushPlayerJoinedMessage,
   pushPlayerLeftMessage,
+  pushRoomMessage,
+  pushDmMessage,
+  setCurrentRoom,
+  clearRoomChat,
 } from '../stores/ChatStore'
 import { setWhiteboardUrls } from '../stores/WhiteboardStore'
 import { logout } from '../stores/AuthStore'
@@ -178,9 +182,9 @@ export default class Network {
       }
     }
 
-    // new instance added to the chatMessages ArraySchema
+    // new instance added to the chatMessages ArraySchema (public chat)
     this.room.state.chatMessages.onAdd = (item, index) => {
-      store.dispatch(pushChatMessage(item))
+      store.dispatch(pushPublicMessage(item))
     }
 
     // when the server sends room data
@@ -191,6 +195,48 @@ export default class Network {
     // when a user sends a message
     this.room.onMessage(Message.ADD_CHAT_MESSAGE, ({ clientId, content }) => {
       phaserEvents.emit(Event.UPDATE_DIALOG_BUBBLE, clientId, content)
+    })
+
+    // DM message received
+    this.room.onMessage(Message.SEND_DM, ({ senderId, senderName, content, targetId }) => {
+      const partnerId = senderId === this.mySessionId ? targetId : senderId
+      const nameMap = store.getState().user.playerNameMap
+      const resolvedPartnerName =
+        senderId === this.mySessionId
+          ? nameMap.get(targetId) || 'Unknown'
+          : senderName
+      store.dispatch(pushDmMessage({
+        partnerId,
+        partnerName: resolvedPartnerName,
+        message: {
+          author: senderName,
+          createdAt: new Date().getTime(),
+          content,
+        } as any,
+      }))
+    })
+
+    // Room message received
+    this.room.onMessage(Message.SEND_ROOM_MESSAGE, ({ senderId, senderName, content }) => {
+      store.dispatch(pushRoomMessage({
+        author: senderName,
+        createdAt: new Date().getTime(),
+        content,
+      } as any))
+      if (senderId !== this.mySessionId) {
+        phaserEvents.emit(Event.UPDATE_DIALOG_BUBBLE, senderId, content)
+      }
+    })
+
+    // Zone enter/leave for room chat
+    this.room.onMessage(Message.ENTER_ZONE, ({ zone }) => {
+      if (zone) {
+        store.dispatch(setCurrentRoom({ roomId: zone.roomId, roomName: zone.roomName }))
+      }
+    })
+
+    this.room.onMessage(Message.LEAVE_ZONE, () => {
+      store.dispatch(clearRoomChat())
     })
 
     // when a peer disconnects with myPeer
@@ -304,5 +350,13 @@ export default class Network {
 
   addChatMessage(content: string) {
     this.room?.send(Message.ADD_CHAT_MESSAGE, { content: content })
+  }
+
+  sendDm(targetSessionId: string, content: string) {
+    this.room?.send(Message.SEND_DM, { targetId: targetSessionId, content })
+  }
+
+  sendRoomMessage(content: string) {
+    this.room?.send(Message.SEND_ROOM_MESSAGE, { content })
   }
 }

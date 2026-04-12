@@ -7,6 +7,7 @@ import chatReducer from './ChatStore'
 import roomReducer from './RoomStore'
 import authReducer from './AuthStore'
 import taskReducer from './taskStore'
+import adminReducer from './adminStore'
 
 enableMapSet()
 
@@ -19,6 +20,7 @@ const store = configureStore({
     room: roomReducer,
     auth: authReducer,
     tasks: taskReducer,
+    admin: adminReducer,
   },
   // Temporary disable serialize check for redux as we store MediaStream in ComputerStore.
   // https://stackoverflow.com/a/63244831

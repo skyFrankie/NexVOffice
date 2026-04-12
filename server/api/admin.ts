@@ -17,10 +17,16 @@ router.get('/layout', async (req, res) => {
   }
 
   const layout = layouts[0]
-  const placements = await db
+  const placementRows = await db
     .select()
     .from(roomPlacements)
+    .leftJoin(roomTemplates, eq(roomPlacements.templateId, roomTemplates.id))
     .where(eq(roomPlacements.layoutId, layout.id))
+
+  const placements = placementRows.map((row) => ({
+    ...row.room_placements,
+    template: row.room_templates,
+  }))
 
   res.json({ ...layout, placements })
 })

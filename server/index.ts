@@ -18,6 +18,7 @@ import adminRoutes from './api/admin'
 import chatRoutes from './api/chat'
 import npcRoutes from './api/npc'
 import taskRoutes from './api/tasks'
+import settingsRoutes from './api/settings'
 import { authMiddleware, adminOnly } from './auth/middleware'
 import { startHpResetCron } from './gamification/hp-reset'
 import { activeRooms } from './rooms/registry'
@@ -75,6 +76,7 @@ app.use('/api/admin', adminRoutes)
 app.use('/api/chat', chatRoutes)
 app.use('/api/npcs', npcRoutes)
 app.use('/api/tasks', taskRoutes)
+app.use('/api/settings', settingsRoutes)
 
 // register colyseus monitor AFTER registering your room handlers
 app.use('/colyseus', authMiddleware, adminOnly, monitor())

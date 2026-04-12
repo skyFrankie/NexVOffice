@@ -15,6 +15,7 @@ import GitHubIcon from '@mui/icons-material/GitHub'
 import TwitterIcon from '@mui/icons-material/Twitter'
 import VideogameAssetIcon from '@mui/icons-material/VideogameAsset'
 import VideogameAssetOffIcon from '@mui/icons-material/VideogameAssetOff'
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings'
 
 import { BackgroundMode } from '../../../types/BackgroundMode'
 import { setShowJoystick, toggleBackgroundMode } from '../stores/UserStore'
@@ -105,7 +106,11 @@ const StyledFab = styled(Fab)<{ target?: string }>`
   }
 `
 
-export default function HelperButtonGroup() {
+interface HelperButtonGroupProps {
+  onAdminClick?: () => void
+}
+
+export default function HelperButtonGroup({ onAdminClick }: HelperButtonGroupProps) {
   const [showControlGuide, setShowControlGuide] = useState(false)
   const [showRoomInfo, setShowRoomInfo] = useState(false)
   const showJoystick = useAppSelector((state) => state.user.showJoystick)
@@ -225,6 +230,13 @@ export default function HelperButtonGroup() {
             {backgroundMode === BackgroundMode.DAY ? <DarkModeIcon /> : <LightModeIcon />}
           </StyledFab>
         </Tooltip>
+        {onAdminClick && (
+          <Tooltip title="Admin Panel">
+            <StyledFab size="small" onClick={onAdminClick}>
+              <AdminPanelSettingsIcon />
+            </StyledFab>
+          </Tooltip>
+        )}
       </ButtonGroup>
     </Backdrop>
   )

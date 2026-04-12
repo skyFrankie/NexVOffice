@@ -1,1 +1,12 @@
-export {}
+export { default as AdminLayout } from './AdminLayout'
+export { default as AdminDashboard } from './AdminDashboard'
+export { default as SettingsPanel } from './SettingsPanel'
+export { default as UserManagement } from './UserManagement'
+export { default as UserForm } from './UserForm'
+export { default as LayoutEditor } from './LayoutEditor'
+export { default as RoomPalette } from './RoomPalette'
+export { default as LayoutPreview } from './LayoutPreview'
+export type { RoomTemplate, Placement } from './LayoutEditor'
+export { default as NPCManagement } from './NPCManagement'
+export { default as NPCForm } from './NPCForm'
+export { default as KnowledgeUpload } from './KnowledgeUpload'

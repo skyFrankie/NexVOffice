@@ -126,6 +126,28 @@ export default class Network {
     store.dispatch(setSessionId(this.room.sessionId))
     this.webRTC = new WebRTC(this.mySessionId, this)
 
+    // Register reconnection factory so NetworkService can reconnect on drop
+    import('./NetworkService').then(({ default: networkService }) => {
+      networkService.enableReconnection(async () => {
+        await this.joinOrCreatePublic()
+      })
+    })
+
+    // Handle unexpected disconnects — trigger reconnection
+    this.room.onLeave((code) => {
+      // code 1000 = intentional close (logout/navigation), don't reconnect
+      if (code !== 1000) {
+        import('./NetworkService').then(({ default: networkService }) => {
+          networkService.handleDisconnect()
+        })
+      }
+    })
+
+    // Handle room errors with a console warning (non-fatal)
+    this.room.onError((code, message) => {
+      console.warn(`[Network] Room error ${code}: ${message}`)
+    })
+
     // new instance added to the players MapSchema
     this.room.state.players.onAdd = (player: IPlayer, key: string) => {
       if (key === this.mySessionId) return

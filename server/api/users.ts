@@ -51,6 +51,8 @@ router.post('/', adminOnly, async (req, res) => {
     displayName: users.displayName,
     avatar: users.avatar,
     role: users.role,
+    isActive: users.isActive,
+    createdAt: users.createdAt,
   })
 
   res.status(201).json(result[0])
@@ -63,13 +65,35 @@ router.put('/:id', async (req, res) => {
     return res.status(403).json({ error: 'Can only update your own profile' })
   }
 
-  const { displayName, avatar } = req.body
+  const { displayName, avatar, role, password, isActive } = req.body
   const updates: Record<string, any> = { updatedAt: new Date() }
   if (displayName) updates.displayName = displayName
   if (avatar) updates.avatar = avatar
 
+  // Admin-only fields
+  if (req.user!.role === 'admin') {
+    if (role && (role === 'admin' || role === 'member')) updates.role = role
+    if (isActive !== undefined) updates.isActive = isActive
+  }
+
+  // Password update (admin can reset any, member can change own)
+  if (password && typeof password === 'string' && password.length >= 6) {
+    updates.passwordHash = await bcrypt.hash(password, config.bcryptRounds)
+  }
+
   await db.update(users).set(updates).where(eq(users.id, id))
-  res.json({ success: true })
+
+  const updated = await db.select({
+    id: users.id,
+    username: users.username,
+    displayName: users.displayName,
+    avatar: users.avatar,
+    role: users.role,
+    isActive: users.isActive,
+    createdAt: users.createdAt,
+  }).from(users).where(eq(users.id, id)).limit(1)
+
+  res.json(updated[0])
 })
 
 // Deactivate user (admin only)

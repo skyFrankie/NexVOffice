@@ -17,6 +17,8 @@ import RoomIndicator from './components/game/RoomIndicator'
 import MeetingPanel from './components/game/MeetingPanel'
 import PlayerHUD from './components/game/PlayerHUD'
 import TaskPanel from './components/tasks/TaskPanel'
+import { AdminLayout } from './components/admin'
+import ConnectionStatus from './components/game/ConnectionStatus'
 
 import phaserGame from './PhaserGame'
 import Bootstrap from './scenes/Bootstrap'
@@ -63,6 +65,8 @@ function App() {
   // Track whether we've already triggered the auto-join to avoid double-joining
   const autoJoinTriggered = useRef(false)
   const [taskPanelOpen, setTaskPanelOpen] = useState(false)
+  const [showAdminPanel, setShowAdminPanel] = useState(false)
+  const isAdmin = useAppSelector((state) => state.auth.isAdmin)
 
   // Once authenticated and lobby is ready, auto-join the public room
   useEffect(() => {
@@ -119,11 +123,19 @@ function App() {
     ui = <></>
   }
 
+  if (showAdminPanel) {
+    return <AdminLayout onClose={() => setShowAdminPanel(false)} />
+  }
+
   return (
     <Backdrop>
+      {/* Connection state banner — shown when reconnecting or disconnected */}
+      <ConnectionStatus />
       {ui}
       {/* Render HelperButtonGroup if no dialogs are opened. */}
-      {!computerDialogOpen && !whiteboardDialogOpen && <HelperButtonGroup />}
+      {!computerDialogOpen && !whiteboardDialogOpen && (
+        <HelperButtonGroup onAdminClick={isAdmin ? () => setShowAdminPanel(true) : undefined} />
+      )}
       {/* Render RoomIndicator when in-game to show current zone name. */}
       {loggedIn && <RoomIndicator />}
       {loggedIn && <MeetingPanel />}

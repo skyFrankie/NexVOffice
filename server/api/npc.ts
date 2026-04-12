@@ -10,14 +10,16 @@ const router = Router()
 
 router.use(authMiddleware)
 
-// GET /api/npcs — list all active NPCs
+// GET /api/npcs — list NPCs (admin sees all, others see active only)
 router.get('/', async (req, res) => {
-  const result = await db
+  const isAdmin = req.user!.role === 'admin'
+  const query = db
     .select({
       id: npcAgents.id,
       name: npcAgents.name,
       type: npcAgents.type,
       avatar: npcAgents.avatar,
+      systemPrompt: npcAgents.systemPrompt,
       greeting: npcAgents.greeting,
       spawnX: npcAgents.spawnX,
       spawnY: npcAgents.spawnY,
@@ -25,8 +27,8 @@ router.get('/', async (req, res) => {
       createdAt: npcAgents.createdAt,
     })
     .from(npcAgents)
-    .where(eq(npcAgents.isActive, true))
 
+  const result = isAdmin ? await query : await query.where(eq(npcAgents.isActive, true))
   res.json(result)
 })
 
